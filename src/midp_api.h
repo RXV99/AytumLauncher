@@ -22,6 +22,10 @@ extern "C" {
 /* Initialize all MIDP native methods */
 void midp_init_natives(jvm_instance *jvm);
 
+/* Repaint flag — set by MIDlet Canvas.repaint(), consumed by the render loop */
+int midp_repaint_requested(void);
+void midp_clear_repaint_requested(void);
+
 /* Java types used by native methods */
 typedef struct midp_displayable midp_displayable;
 typedef struct midp_display midp_display;

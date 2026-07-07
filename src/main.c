@@ -34,8 +34,8 @@ static jvm_instance *g_jvm = NULL;
 #define COL_SPLASH_DIM 0x707078
 
 static void draw_splashscreen(void) {
-    lcdui_begin_frame();
     lcdui_clear(COL_SPLASH_BG);
+    lcdui_begin_frame();
 
     lcdui_set_color(COL_SPLASH_GOLD);
     lcdui_draw_string("AYTUM", 480, 180, ANCHOR_HCENTER | ANCHOR_TOP);
@@ -163,8 +163,15 @@ static void run_midlet(const char *jar_path, jad_info *info) {
             }
         }
 
-        lcdui_begin_frame();
         lcdui_clear(COL_BG);
+        lcdui_begin_frame();
+
+        if (midp_repaint_requested()) {
+            midp_clear_repaint_requested();
+            /* MIDlet requested a repaint via Canvas.repaint().
+               The MIDlet's own Graphics calls have already drawn to the
+               backbuffer during jvm execution. Just clear and swap. */
+        }
 
         /* Play button indicator */
         lcdui_set_color(COL_GOLD);

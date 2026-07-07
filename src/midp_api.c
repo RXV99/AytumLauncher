@@ -16,6 +16,17 @@
 #undef JVM_UNUSED
 #define JVM_UNUSED
 
+/* Repaint flag — native_canvas_repaint sets this; the render loop owns frame lifecycle */
+static volatile int g_repaint_requested = 0;
+
+int midp_repaint_requested(void) {
+    return g_repaint_requested;
+}
+
+void midp_clear_repaint_requested(void) {
+    g_repaint_requested = 0;
+}
+
 /* ============================================================
  * javax.microedition.midlet.MIDlet
  * ============================================================ */
@@ -91,11 +102,7 @@ static void native_canvas_get_height(JVM_UNUSED jvm_instance *jvm, jvm_thread *t
 }
 
 static void native_canvas_repaint(JVM_UNUSED jvm_instance *jvm, jvm_thread *thread) {
-    printf("midp: Canvas.repaint()\n");
-    vita2d_start_drawing();
-    vita2d_clear_screen();
-    vita2d_end_drawing();
-    vita2d_swap_buffers();
+    g_repaint_requested = 1;
 }
 
 static void native_canvas_service_repaints(JVM_UNUSED jvm_instance *jvm, jvm_thread *thread) {

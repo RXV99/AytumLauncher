@@ -864,8 +864,8 @@ launcher_result launcher_run(const char **selected_path, jad_info *selected_info
                 if (evs[i].type == INPUT_EVENT_KEY_PRESSED && evs[i].key_code == KEY_SOFT3)
                     return LAUNCHER_RESULT_QUIT;
             }
-            lcdui_begin_frame();
             lcdui_clear(COL_BG);
+            lcdui_begin_frame();
             draw_text("No Java ME apps found in ux0:data/java/", 480, 260,
                       ANCHOR_HCENTER | ANCHOR_TOP, COL_DIM);
             draw_text("Place .jar files and relaunch", 480, 290,
@@ -913,8 +913,8 @@ launcher_result launcher_run(const char **selected_path, jad_info *selected_info
             }
         }
 
-        lcdui_begin_frame();
         lcdui_clear(COL_BG);
+        lcdui_begin_frame();
         lcdui_set_translate(0, 0);
 
         render_sidebar();
