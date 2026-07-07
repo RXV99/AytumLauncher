@@ -235,13 +235,17 @@ int launcher_scan(void) {
             free(jad_name);
         }
 
-        if (app->has_jad) {
+        {
             jad_info info;
-            if (jad_load(app->jad_path, &info) == 0) {
-                strncpy(app->name, info.midlet_name, sizeof(app->name) - 1);
-                strncpy(app->vendor, info.midlet_vendor, sizeof(app->vendor) - 1);
-                strncpy(app->version, info.midlet_version, sizeof(app->version) - 1);
-                strncpy(app->class_name, info.midlet_class, sizeof(app->class_name) - 1);
+            if (jad_load_for_jar(app->jar_path, &info) == 0) {
+                if (info.midlet_name[0])
+                    strncpy(app->name, info.midlet_name, sizeof(app->name) - 1);
+                if (info.midlet_vendor[0])
+                    strncpy(app->vendor, info.midlet_vendor, sizeof(app->vendor) - 1);
+                if (info.midlet_version[0])
+                    strncpy(app->version, info.midlet_version, sizeof(app->version) - 1);
+                if (info.midlet_class[0])
+                    strncpy(app->class_name, info.midlet_class, sizeof(app->class_name) - 1);
                 jad_free(&info);
             }
         }
@@ -731,16 +735,7 @@ static launcher_result handle_recent_input(int key, const char **sel_path, jad_i
                 strncpy(recent_sel_path, recents[recent_sel].path, sizeof(recent_sel_path) - 1);
                 recent_sel_path[sizeof(recent_sel_path) - 1] = 0;
                 *sel_path = recent_sel_path;
-                memset(sel_info, 0, sizeof(jad_info));
-                strncpy(sel_info->midlet_name, recents[recent_sel].name,
-                        sizeof(sel_info->midlet_name) - 1);
-                char jad_path[512];
-                snprintf(jad_path, sizeof(jad_path), "%s", *sel_path);
-                char *dot = strrchr(jad_path, '.');
-                if (dot && strcasecmp(dot, ".jar") == 0) {
-                    strcpy(dot, ".jad");
-                    jad_load(jad_path, sel_info);
-                }
+                jad_load_for_jar(*sel_path, sel_info);
                 return LAUNCHER_RESULT_LAUNCH;
             }
             break;
@@ -782,15 +777,7 @@ static launcher_result handle_browse_input(int key, const char **sel_path, jad_i
                     browse_enter_dir(browse_items[browse_sel].full_path);
                 } else if (browse_items[browse_sel].is_jar) {
                     *sel_path = browse_items[browse_sel].full_path;
-                    memset(sel_info, 0, sizeof(jad_info));
-                    char jad_path[512];
-                    snprintf(jad_path, sizeof(jad_path), "%s", *sel_path);
-                    char *dot = strrchr(jad_path, '.');
-                    if (dot && strcasecmp(dot, ".jar") == 0) {
-                        strcpy(dot, ".jad");
-                        if (fileio_exists(jad_path))
-                            jad_load(jad_path, sel_info);
-                    }
+                    jad_load_for_jar(*sel_path, sel_info);
                     if (!sel_info->midlet_name[0]) {
                         strncpy(sel_info->midlet_name,
                                 browse_items[browse_sel].name,

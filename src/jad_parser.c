@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <strings.h>
+#include <zlib.h>
 
 #define MAX_JAD_ENTRIES 64
 
@@ -154,6 +155,73 @@ int jad_load(const char *path, jad_info *info) {
     return ret;
 }
 
+/* Try to extract a file from a ZIP/JAR archive.
+ * Returns malloc'd buffer with content, sets *size. Returns NULL if not found.
+ * Handles stored (method 0) and deflated (method 8) entries. */
+static uint8_t *zip_extract_file(const uint8_t *data, size_t data_size,
+                                  const char *target_name, size_t *out_size) {
+    *out_size = 0;
+    const uint8_t *p = data;
+    const uint8_t *end = data + data_size;
+
+    while (p + 30 <= end) {
+        uint32_t sig = (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+                       ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+        if (sig != 0x04034b50) break;
+
+        uint16_t method   = (uint16_t)p[8]  | ((uint16_t)p[9]  << 8);
+        uint32_t comp_sz  = (uint32_t)p[18] | ((uint32_t)p[19] << 8) |
+                            ((uint32_t)p[20] << 16) | ((uint32_t)p[21] << 24);
+        uint32_t uncomp_sz = (uint32_t)p[22] | ((uint32_t)p[23] << 8) |
+                             ((uint32_t)p[24] << 16) | ((uint32_t)p[25] << 24);
+        uint16_t name_len = (uint16_t)p[26] | ((uint16_t)p[27] << 8);
+        uint16_t extra_len = (uint16_t)p[28] | ((uint16_t)p[29] << 8);
+        const char *name_ptr = (const char*)p + 30;
+        const uint8_t *data_ptr = p + 30 + name_len + extra_len;
+
+        /* Case-insensitive name match */
+        if (strcasecmp(name_ptr, target_name) == 0) {
+            if (method == 0) {
+                /* Stored */
+                uint8_t *buf = (uint8_t*)malloc(uncomp_sz + 1);
+                if (!buf) return NULL;
+                memcpy(buf, data_ptr, uncomp_sz);
+                buf[uncomp_sz] = 0;
+                *out_size = uncomp_sz;
+                return buf;
+            } else if (method == 8) {
+                /* Deflated — decompress with zlib */
+                uint8_t *buf = (uint8_t*)malloc(uncomp_sz + 1);
+                if (!buf) return NULL;
+                z_stream strm;
+                memset(&strm, 0, sizeof(strm));
+                strm.next_in   = (uint8_t*)data_ptr;
+                strm.avail_in  = comp_sz;
+                strm.next_out  = buf;
+                strm.avail_out = uncomp_sz;
+                if (inflateInit2(&strm, -MAX_WBITS) != Z_OK) {
+                    free(buf);
+                    return NULL;
+                }
+                int ret = inflate(&strm, Z_FINISH);
+                inflateEnd(&strm);
+                if (ret != Z_STREAM_END) {
+                    free(buf);
+                    return NULL;
+                }
+                buf[uncomp_sz] = 0;
+                *out_size = uncomp_sz;
+                return buf;
+            }
+            return NULL; /* Unsupported compression */
+        }
+
+        uint32_t total = 30 + name_len + extra_len + comp_sz;
+        p += total;
+    }
+    return NULL;
+}
+
 int jad_load_for_jar(const char *jar_path, jad_info *info) {
     if (!jar_path || !info) return -1;
 
@@ -173,12 +241,32 @@ int jad_load_for_jar(const char *jar_path, jad_info *info) {
     }
     free(jad_path);
 
-    /* No .jad file, create minimal info from jar_path */
+    /* No .jad file — try reading MANIFEST.MF from the JAR */
+    printf("jad: No JAD found. Using JAR manifest.\n");
+
+    size_t jar_size;
+    uint8_t *jar_data = fileio_read_file(jar_path, &jar_size);
+    if (jar_data) {
+        size_t mf_size;
+        uint8_t *mf = zip_extract_file(jar_data, jar_size, "META-INF/MANIFEST.MF", &mf_size);
+        if (mf) {
+            int ret = jad_parse((const char*)mf, mf_size, info);
+            free(mf);
+            free(jar_data);
+            if (ret == 0) {
+                snprintf(info->jar_path, sizeof(info->jar_path) - 1, "%s", jar_path);
+                return 0;
+            }
+        }
+        free(jar_data);
+    }
+
+    /* Final fallback: create minimal info from jar_path */
     memset(info, 0, sizeof(jad_info));
+    printf("jad: No manifest found. Using filename.\n");
     const char *name = fileio_basename(jar_path);
     if (name) {
         strncpy(info->midlet_name, name, sizeof(info->midlet_name) - 1);
-        /* Strip .jar */
         char *dot2 = strrchr(info->midlet_name, '.');
         if (dot2 && strcasecmp(dot2, ".jar") == 0) *dot2 = 0;
     }

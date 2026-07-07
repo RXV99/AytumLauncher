@@ -17,6 +17,9 @@ set(VITA_TITLEID  "JAVAME00001")
 set(VITA_VERSION  "01.00")
 set(VITA_CATEGORY "gp")
 
+# vita_create_vpk doesn't read VITA_CATEGORY; must pass it to mksfoex explicitly
+set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -s CATEGORY=${VITA_CATEGORY}")
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 11)
 
@@ -41,13 +44,13 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 target_link_libraries(${PROJECT_NAME} PRIVATE
     vita2d
     SceSysmodule_stub
-    SceNet_stub SceNetCtl_stub
+    SceNet_stub_weak SceNetCtl_stub_weak
     SceAudio_stub SceLibKernel_stub
     SceCtrl_stub SceTouch_stub
     SceDisplay_stub SceGxm_stub
     SceAppMgr_stub SceCommonDialog_stub
-    ScePvf_stub ScePgf_stub
-    m
+    ScePvf_stub_weak ScePgf_stub_weak
+    m z
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE

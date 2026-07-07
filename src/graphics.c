@@ -93,6 +93,17 @@ void lcdui_get_clip(int *x, int *y, int *w, int *h) {
     *h = clip_h;
 }
 
+static int font_ascent = 0;
+static int font_total_height = 0;
+
+static void lcdui_update_font_metrics(void) {
+    if (!vita_font) return;
+    font_total_height = vita2d_pvf_text_height(vita_font, 12, "Ay");
+    font_ascent = vita2d_pvf_text_height(vita_font, 12, "A");
+    if (font_ascent <= 0) font_ascent = font_total_height * 4 / 5;
+    if (font_total_height <= 0) font_total_height = 18;
+}
+
 /* Drawing primitives */
 void lcdui_draw_line(int x1, int y1, int x2, int y2) {
     x1 += translate_x; y1 += translate_y;
@@ -175,17 +186,22 @@ void lcdui_fill_triangle(int x1, int y1, int x2, int y2, int x3, int y3) {
 void lcdui_draw_string(const char *str, int x, int y, int anchor) {
     if (!str || !vita_font) return;
 
+    lcdui_update_font_metrics();
+
     int tx = x + translate_x;
     int ty = y + translate_y;
     int str_w = lcdui_string_width(str);
-    int str_h = lcdui_font_height();
+    int str_h = font_total_height;
 
-    /* Apply anchor */
+    /* Anchor: treat ty as text-top (LCDUI convention) */
     if (anchor & ANCHOR_HCENTER) tx -= str_w / 2;
     else if (anchor & ANCHOR_RIGHT) tx -= str_w;
     if (anchor & ANCHOR_VCENTER) ty -= str_h / 2;
     else if (anchor & ANCHOR_BOTTOM) ty -= str_h;
     else if (anchor & ANCHOR_BASELINE) ty -= str_h;
+
+    /* vita2d_pvf_draw_text uses y as baseline; convert text-top to baseline */
+    int baseline_y = ty + font_ascent;
 
     unsigned int c = RGBA8(
         (current_color >> 16) & 0xFF,
@@ -194,7 +210,7 @@ void lcdui_draw_string(const char *str, int x, int y, int anchor) {
         0xFF
     );
 
-    vita2d_pvf_draw_text(vita_font, tx, ty, c, 16, str);
+    vita2d_pvf_draw_text(vita_font, tx, baseline_y, c, 12, str);
 }
 
 void lcdui_draw_char(char c, int x, int y, int anchor) {
@@ -203,8 +219,8 @@ void lcdui_draw_char(char c, int x, int y, int anchor) {
 }
 
 int lcdui_string_width(const char *str) {
-    if (!str || !vita_font) return 8 * (int)strlen(str);
-    return vita2d_pvf_text_width(vita_font, 16, str);
+    if (!str || !vita_font) return 6 * (int)strlen(str);
+    return vita2d_pvf_text_width(vita_font, 12, str);
 }
 
 int lcdui_char_width(char c) {
