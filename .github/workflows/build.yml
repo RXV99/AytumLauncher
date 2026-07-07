@@ -16,14 +16,13 @@ jobs:
 
       - name: Find SDK path
         run: |
-          ls /usr/local/vitasdk/bin/arm-vita-eabi-gcc 2>/dev/null && echo "VITASDK=/usr/local/vitasdk" || true
-          ls /vitasdk/bin/arm-vita-eabi-gcc 2>/dev/null && echo "VITASDK=/vitasdk" || true
-          which arm-vita-eabi-gcc 2>/dev/null || echo "compiler not in PATH"
-          echo "VITASDK=$VITASDK"
+          ls /usr/local/vitasdk/bin/arm-vita-eabi-gcc 2>/dev/null && echo "Found" || echo "Not at /usr/local"
+          ls /vitasdk/bin/arm-vita-eabi-gcc 2>/dev/null && echo "Found" || echo "Not at /vitasdk"
+          which arm-vita-eabi-gcc 2>/dev/null || echo "not in PATH"
 
       - name: Configure
         run: |
-          export VITASDK=${VITASDK:-/usr/local/vitasdk}
+          VITASDK=${VITASDK:-/usr/local/vitasdk}
           cmake -S . -B build \
             -DCMAKE_TOOLCHAIN_FILE=$VITASDK/share/vita.toolchain.cmake \
             -DCMAKE_BUILD_TYPE=Release 2>&1
