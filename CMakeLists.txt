@@ -48,7 +48,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     SceAudio_stub SceLibKernel_stub
     SceCtrl_stub SceTouch_stub
     SceDisplay_stub SceGxm_stub
-    SceAppMgr_stub SceCommonDialog_stub
     ScePvf_stub_weak ScePgf_stub_weak
     m z
 )

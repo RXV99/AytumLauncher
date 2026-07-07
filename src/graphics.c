@@ -36,9 +36,15 @@ static void lcdui_update_font_metrics(void) {
 
 int lcdui_init(void) {
     /* Load font sysmodule (required on real hardware - PGF also provides PVF) */
-    sceSysmoduleLoadModule(SCE_SYSMODULE_PGF);
+    int pgf_ret = sceSysmoduleLoadModule(SCE_SYSMODULE_PGF);
+    if (pgf_ret < 0)
+        printf("lcdui: PGF load failed (0x%08X), continuing\n", pgf_ret);
 
-    vita2d_init();
+    int v2d_ret = vita2d_init();
+    if (v2d_ret < 0) {
+        printf("lcdui: vita2d_init failed (0x%08X)\n", v2d_ret);
+        return -1;
+    }
     vita2d_set_clear_color(RGBA8(0xFF, 0xFF, 0xFF, 0xFF));
     vita_font = vita2d_load_default_pvf();
     lcdui_update_font_metrics();
