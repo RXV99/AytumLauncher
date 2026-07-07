@@ -59,7 +59,7 @@ static void queue_pointer(input_event_type type, int x, int y) {
 int input_init(void) {
     memset(key_state, 0, sizeof(key_state));
     sceCtrlSetSamplingMode(SCE_CTRL_MODE_ANALOG);
-    sceTouchSetSamplingState(SCE_TOUCH_PORT_BASIC, SCE_TOUCH_SAMPLING_STATE_START);
+    sceTouchSetSamplingState(SCE_TOUCH_PORT_BACK, SCE_TOUCH_SAMPLING_STATE_START);
     sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, SCE_TOUCH_SAMPLING_STATE_START);
     event_head = event_tail = 0;
     return 0;
