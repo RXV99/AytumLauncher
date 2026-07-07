@@ -11,6 +11,7 @@
 #include "launcher.h"
 #include "jad_parser.h"
 #include "jvm_core.h"
+#include "midp_api.h"
 #include "graphics.h"
 #include "input.h"
 #include "fileio.h"
