@@ -23,18 +23,18 @@
 #define COL_SEP       0x22222E
 #define COL_SEL_BG    0xC8A02718
 
-#define SIDEBAR_W      168
+#define SIDEBAR_W      164
 #define SIDEBAR_ITEM_X 18
-#define SIDEBAR_ITEM_H 38
-#define SIDEBAR_ITEM_GAP 8
-#define SIDEBAR_TOP_PAD 84
+#define SIDEBAR_ITEM_H 44
+#define SIDEBAR_ITEM_GAP 10
+#define SIDEBAR_TOP_PAD 82
 
-#define CONTENT_X   (SIDEBAR_W + 28)
-#define CONTENT_Y   48
-#define CONTENT_W   (960 - CONTENT_X - 32)
+#define CONTENT_X   (SIDEBAR_W + 16)
+#define CONTENT_Y   22
+#define CONTENT_W   (960 - CONTENT_X - 16)
 
-#define LIST_ROW_H  34
-#define LIST_ROW_GAP 6
+#define LIST_ROW_H  32
+#define LIST_ROW_GAP 8
 
 #define BROWSE_STATE_FILE "ux0:data/java/.browse_path"
 
@@ -386,9 +386,9 @@ static void render_sidebar(void) {
     lcdui_set_color(COL_SURFACE2);
     lcdui_fill_rect(0, 0, SIDEBAR_W, 544);
 
-    draw_gold_text("AYTUM", SIDEBAR_W / 2, 18, ANCHOR_HCENTER | ANCHOR_TOP);
-    draw_text("LAUNCHER", SIDEBAR_W / 2, 42, ANCHOR_HCENTER | ANCHOR_TOP, COL_GOLD_DIM);
-    draw_separator(12, 62, SIDEBAR_W - 24);
+    draw_gold_text("AYTUM", SIDEBAR_W / 2, 16, ANCHOR_HCENTER | ANCHOR_TOP);
+    draw_text("LAUNCHER", SIDEBAR_W / 2, 36, ANCHOR_HCENTER | ANCHOR_TOP, COL_GOLD_DIM);
+    draw_separator(10, 54, SIDEBAR_W - 20);
 
     for (int i = 0; i < SECTION_COUNT; i++) {
         int y = SIDEBAR_TOP_PAD + i * (SIDEBAR_ITEM_H + SIDEBAR_ITEM_GAP);
@@ -410,7 +410,7 @@ static void render_sidebar(void) {
         int col = is_sel ? COL_GOLD : (is_active ? COL_GOLD_DIM : COL_MUTED);
         draw_text(section_icons[i], SIDEBAR_ITEM_X, center_text_y(y, SIDEBAR_ITEM_H),
                   ANCHOR_LEFT | ANCHOR_TOP, col);
-        draw_text(section_labels[i], SIDEBAR_ITEM_X + 24, center_text_y(y, SIDEBAR_ITEM_H),
+        draw_text(section_labels[i], SIDEBAR_ITEM_X + 22, center_text_y(y, SIDEBAR_ITEM_H),
                   ANCHOR_LEFT | ANCHOR_TOP, col);
     }
 }
@@ -427,7 +427,7 @@ static void render_recent(void) {
         draw_text("No recently opened apps", 480, 240, ANCHOR_HCENTER | ANCHOR_TOP, COL_DIM);
     } else {
         for (int i = 0; i < n; i++) {
-            int row_y = CONTENT_Y + 32 + i * (LIST_ROW_H + LIST_ROW_GAP);
+            int row_y = CONTENT_Y + 36 + i * (LIST_ROW_H + LIST_ROW_GAP);
             int row_h = LIST_ROW_H;
             if (i == recent_sel) {
                 lcdui_set_color(COL_SEL_BG);
@@ -440,7 +440,7 @@ static void render_recent(void) {
                       ANCHOR_LEFT | ANCHOR_TOP,
                       i == recent_sel ? COL_GOLD : COL_TEXT);
             draw_text(recents[i].path,
-                      CONTENT_X + 12, center_text_y(row_y, row_h) + 16,
+                      CONTENT_X + 12, center_text_y(row_y, row_h) + 14,
                       ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
         }
     }
@@ -452,7 +452,7 @@ static void render_browse(void) {
 
     draw_text(browse_path, CONTENT_X, CONTENT_Y + 30, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
 
-    int first_row = CONTENT_Y + 50;
+    int first_row = CONTENT_Y + 48;
     int vis_end = browse_scroll + 11;
     if (vis_end > browse_item_count) vis_end = browse_item_count;
 
@@ -507,7 +507,7 @@ static void render_settings(void) {
     int item_count = 1;
 
     for (int i = 0; i < item_count; i++) {
-        int row_y = CONTENT_Y + 32 + i * (LIST_ROW_H + LIST_ROW_GAP);
+        int row_y = CONTENT_Y + 36 + i * (LIST_ROW_H + LIST_ROW_GAP);
         int row_h = LIST_ROW_H;
         if (i == settings_sel) {
             lcdui_set_color(COL_SEL_BG);
@@ -523,7 +523,7 @@ static void render_settings(void) {
     }
 
     draw_text("Cross: Cycle resolution", CONTENT_X + 12,
-              CONTENT_Y + 32 + item_count * (LIST_ROW_H + LIST_ROW_GAP) + 8,
+              CONTENT_Y + 36 + item_count * (LIST_ROW_H + LIST_ROW_GAP) + 8,
               ANCHOR_LEFT | ANCHOR_TOP, COL_MUTED);
 }
 
