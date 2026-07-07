@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<livearea style="a1" format="rectangle">
+    <livearea-background>
+        <image bg_type="image">bg.png</image>
+    </livearea-background>
+    <gate>
+        <startup>startup.png</startup>
+    </gate>
+    <frame/>
+</livearea>
