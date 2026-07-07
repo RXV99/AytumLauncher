@@ -23,6 +23,17 @@ static int clip_x = 0, clip_y = 0, clip_w = 960, clip_h = 544;
 #define VITA_DISPLAY_W 960
 #define VITA_DISPLAY_H 544
 
+static int font_ascent = 0;
+static int font_total_height = 0;
+
+static void lcdui_update_font_metrics(void) {
+    if (!vita_font) return;
+    font_total_height = vita2d_pvf_text_height(vita_font, LCDUI_FONT_SIZE, "Ay");
+    font_ascent = vita2d_pvf_text_height(vita_font, LCDUI_FONT_SIZE, "A");
+    if (font_ascent <= 0) font_ascent = font_total_height * 4 / 5;
+    if (font_total_height <= 0) font_total_height = (int)LCDUI_FONT_SIZE;
+}
+
 int lcdui_init(void) {
     /* Load font sysmodule (required on real hardware - PGF also provides PVF) */
     sceSysmoduleLoadModule(SCE_SYSMODULE_PGF);
@@ -93,17 +104,6 @@ void lcdui_get_clip(int *x, int *y, int *w, int *h) {
     *y = clip_y;
     *w = clip_w;
     *h = clip_h;
-}
-
-static int font_ascent = 0;
-static int font_total_height = 0;
-
-static void lcdui_update_font_metrics(void) {
-    if (!vita_font) return;
-    font_total_height = vita2d_pvf_text_height(vita_font, LCDUI_FONT_SIZE, "Ay");
-    font_ascent = vita2d_pvf_text_height(vita_font, LCDUI_FONT_SIZE, "A");
-    if (font_ascent <= 0) font_ascent = font_total_height * 4 / 5;
-    if (font_total_height <= 0) font_total_height = (int)LCDUI_FONT_SIZE;
 }
 
 /* Drawing primitives */
