@@ -6,6 +6,11 @@
 #include <math.h>
 #include <psp2/kernel/threadmgr.h>
 
+/* Safe unaligned reads for ARM */
+static inline uint16_t read_u16(const uint8_t *p) { uint16_t v; memcpy(&v, p, 2); return v; }
+static inline uint32_t read_u32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
+static inline int32_t  read_s32(const uint8_t *p) { int32_t v;  memcpy(&v, p, 4); return v; }
+
 /* ============================================================
  * Minimal MP3 decoder (public domain, based on minimp3)
  * ============================================================ */
@@ -115,20 +120,20 @@ static wav_decoder *wav_open(const uint8_t *data, size_t size) {
 
     size_t pos = 12;
     while (pos + 8 <= size) {
-        uint32_t chunk_id = *(uint32_t*)(data + pos);
-        uint32_t chunk_size = *(uint32_t*)(data + pos + 4);
+        uint32_t chunk_id = read_u32(data + pos);
+        uint32_t chunk_size = read_u32(data + pos + 4);
         if (pos + 8 + chunk_size > size) break;
 
         if (chunk_id == 0x20746D66) { /* "fmt " */
             if (chunk_size >= 16) {
-                uint16_t audio_fmt = *(uint16_t*)(data + pos + 8);
+                uint16_t audio_fmt = read_u16(data + pos + 8);
                 if (audio_fmt != 1) { /* Only PCM */
                     free(wav);
                     return NULL;
                 }
-                wav->fmt.channels = *(uint16_t*)(data + pos + 10);
-                wav->fmt.sample_rate = *(int*)(data + pos + 12);
-                wav->fmt.bits_per_sample = *(uint16_t*)(data + pos + 22);
+                wav->fmt.channels = read_u16(data + pos + 10);
+                wav->fmt.sample_rate = read_s32(data + pos + 12);
+                wav->fmt.bits_per_sample = read_u16(data + pos + 22);
             }
         } else if (chunk_id == 0x61746164) { /* "data" */
             wav->data_chunk_found = 1;
@@ -217,13 +222,13 @@ audio_decoder *decoder_open(const char *path) {
 
         size_t pos = 12;
         while (pos + 8 <= size) {
-            uint32_t chunk_id = *(uint32_t*)(data + pos);
-            uint32_t chunk_size = *(uint32_t*)(data + pos + 4);
+            uint32_t chunk_id = read_u32(data + pos);
+            uint32_t chunk_size = read_u32(data + pos + 4);
             if (pos + 8 + chunk_size > size) break;
             if (chunk_id == 0x20746D66 && chunk_size >= 16) {
-                w->fmt.channels = *(uint16_t*)(data + pos + 10);
-                w->fmt.sample_rate = *(int*)(data + pos + 12);
-                w->fmt.bits_per_sample = *(uint16_t*)(data + pos + 22);
+                w->fmt.channels = read_u16(data + pos + 10);
+                w->fmt.sample_rate = read_s32(data + pos + 12);
+                w->fmt.bits_per_sample = read_u16(data + pos + 22);
             } else if (chunk_id == 0x61746164) {
                 w->data_chunk_found = 1;
                 w->offset = pos + 8;

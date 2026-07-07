@@ -114,7 +114,7 @@ static int browse_list_dir(const char *path) {
         snprintf(browse_items[n].full_path, sizeof(browse_items[n].full_path), "%s", path);
         char *slash = strrchr(browse_items[n].full_path, '/');
         if (slash) *slash = 0;
-        else        browse_items[n].full_path[0] = 0;
+        else        strcpy(browse_items[n].full_path, "ux0:");
         browse_items[n].is_dir = 1;
         n++;
     }
@@ -551,6 +551,113 @@ static void render_footer(void) {
 }
 
 /* ── Input handlers ── */
+
+static launcher_result handle_pointer(int px, int py, const char **sel_path, jad_info *sel_info) {
+    /* Sidebar hit */
+    if (px < SIDEBAR_W) {
+        int start_y = 82;
+        for (int i = 0; i < SECTION_COUNT; i++) {
+            int y0 = start_y + i * 58;
+            if (py >= y0 && py < y0 + 48) {
+                if (i == current_section && !sidebar_focus) {
+                    sidebar_focus = 1;
+                } else {
+                    sidebar_sel = i;
+                    current_section = (launcher_section)i;
+                    sidebar_focus = 0;
+                    if (current_section == SECTION_BROWSE)
+                        browse_list_dir(browse_path);
+                    if (current_section == SECTION_RECENT)
+                        recent_sel = 0;
+                    if (current_section == SECTION_SETTINGS)
+                        settings_sel = 0;
+                }
+                return LAUNCHER_RESULT_NONE;
+            }
+        }
+        return LAUNCHER_RESULT_NONE;
+    }
+
+    if (sidebar_focus) return LAUNCHER_RESULT_NONE;
+
+    /* Content hit based on section */
+    switch (current_section) {
+        case SECTION_RECENT: {
+            recent_entry recents[MAX_RECENT];
+            int n = launcher_get_recent(recents, MAX_RECENT);
+            for (int i = 0; i < n; i++) {
+                int y0 = 58 + i * 40;
+                if (py >= y0 && py < y0 + 36) {
+                    recent_sel = i;
+                    strncpy(recent_sel_path, recents[recent_sel].path, sizeof(recent_sel_path) - 1);
+                    recent_sel_path[sizeof(recent_sel_path) - 1] = 0;
+                    *sel_path = recent_sel_path;
+                    memset(sel_info, 0, sizeof(jad_info));
+                    strncpy(sel_info->midlet_name, recents[recent_sel].name,
+                            sizeof(sel_info->midlet_name) - 1);
+                    char jad_path[512];
+                    snprintf(jad_path, sizeof(jad_path), "%s", *sel_path);
+                    char *dot = strrchr(jad_path, '.');
+                    if (dot && strcasecmp(dot, ".jar") == 0) {
+                        strcpy(dot, ".jad");
+                        jad_load(jad_path, sel_info);
+                    }
+                    return LAUNCHER_RESULT_LAUNCH;
+                }
+            }
+            break;
+        }
+        case SECTION_BROWSE: {
+            if (!browse_items) break;
+            for (int i = browse_scroll; i < browse_item_count && i < browse_scroll + 11; i++) {
+                int idx = i - browse_scroll;
+                int y0 = 68 + idx * 38;
+                if (py >= y0 && py < y0 + 34) {
+                    browse_sel = i;
+                    if (browse_items[browse_sel].is_dir) {
+                        browse_enter_dir(browse_items[browse_sel].full_path);
+                    } else if (browse_items[browse_sel].is_jar) {
+                        *sel_path = browse_items[browse_sel].full_path;
+                        memset(sel_info, 0, sizeof(jad_info));
+                        char jad_path[512];
+                        snprintf(jad_path, sizeof(jad_path), "%s", *sel_path);
+                        char *dot = strrchr(jad_path, '.');
+                        if (dot && strcasecmp(dot, ".jar") == 0) {
+                            strcpy(dot, ".jad");
+                            if (fileio_exists(jad_path))
+                                jad_load(jad_path, sel_info);
+                        }
+                        if (!sel_info->midlet_name[0]) {
+                            strncpy(sel_info->midlet_name, browse_items[browse_sel].name,
+                                    sizeof(sel_info->midlet_name) - 1);
+                            char *d = strrchr(sel_info->midlet_name, '.');
+                            if (d && strcasecmp(d, ".jar") == 0) *d = 0;
+                        }
+                        launcher_add_recent(*sel_path, sel_info->midlet_name);
+                        return LAUNCHER_RESULT_LAUNCH;
+                    }
+                    return LAUNCHER_RESULT_NONE;
+                }
+            }
+            break;
+        }
+        case SECTION_SETTINGS: {
+            for (int i = 0; i < settings_item_count; i++) {
+                int y0 = 68 + i * 44;
+                if (py >= y0 && py < y0 + 38) {
+                    settings_sel = i;
+                    res_current = (res_current + 1) % res_count;
+                    return LAUNCHER_RESULT_NONE;
+                }
+            }
+            break;
+        }
+        default:
+            break;
+    }
+    return LAUNCHER_RESULT_NONE;
+}
+
 static launcher_result handle_sidebar_input(int key, const char **sel_path, jad_info *sel_info) {
     (void)sel_path;
     (void)sel_info;
@@ -718,15 +825,25 @@ launcher_result launcher_run(const char **selected_path, jad_info *selected_info
     *selected_path = NULL;
 
     if (app_count == 0) {
-        lcdui_begin_frame();
-        lcdui_clear(COL_BG);
-        draw_text("No Java ME apps found in ux0:data/java/", 480, 260,
-                  ANCHOR_HCENTER | ANCHOR_TOP, COL_DIM);
-        draw_text("Place .jar files and relaunch", 480, 290,
-                  ANCHOR_HCENTER | ANCHOR_TOP, COL_MUTED);
-        lcdui_end_frame();
-        sceKernelDelayThread(2 * 1000 * 1000);
-        return LAUNCHER_RESULT_REFRESH;
+        while (1) {
+            input_process();
+            input_event evs[16];
+            int ec = input_poll(evs, 16);
+            for (int i = 0; i < ec; i++) {
+                if (evs[i].type == INPUT_EVENT_KEY_PRESSED && evs[i].key_code == KEY_SOFT3)
+                    return LAUNCHER_RESULT_QUIT;
+            }
+            lcdui_begin_frame();
+            lcdui_clear(COL_BG);
+            draw_text("No Java ME apps found in ux0:data/java/", 480, 260,
+                      ANCHOR_HCENTER | ANCHOR_TOP, COL_DIM);
+            draw_text("Place .jar files and relaunch", 480, 290,
+                      ANCHOR_HCENTER | ANCHOR_TOP, COL_MUTED);
+            draw_text("Triangle: Quit", 480, 340,
+                      ANCHOR_HCENTER | ANCHOR_TOP, COL_DIM);
+            lcdui_end_frame();
+            sceKernelDelayThread(16 * 1000);
+        }
     }
 
     while (1) {
@@ -767,6 +884,7 @@ launcher_result launcher_run(const char **selected_path, jad_info *selected_info
 
         lcdui_begin_frame();
         lcdui_clear(COL_BG);
+        lcdui_set_translate(0, 0);
 
         render_sidebar();
 

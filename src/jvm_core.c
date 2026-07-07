@@ -228,14 +228,15 @@ jvm_class *jvm_find_class(jvm_instance *jvm, const char *name) {
  * ============================================================ */
 
 jvm_object *jvm_alloc_object(jvm_instance *jvm, jvm_class *class_info) {
-    size_t size = sizeof(jvm_object);
+    size_t data_size = class_info->fields_count * sizeof(jvm_value);
+    size_t size = sizeof(jvm_object) + data_size;
     if (jvm->heap_used + size > JVM_HEAP_SIZE) return NULL;
 
     jvm_object *obj = (jvm_object*)(jvm->heap + jvm->heap_used);
     jvm->heap_used += size;
     memset(obj, 0, size);
     obj->class_info = class_info;
-    obj->data_size = 0;
+    obj->data_size = data_size;
     return obj;
 }
 
@@ -660,15 +661,54 @@ jvm_value jvm_execute_method(jvm_instance *jvm, jvm_class *class_info,
                 break;
             }
             case 0xb4: { /* getfield */
-                jvm_stack_pop(thread);
-                READ_U2();
-                jvm_stack_push(thread, make_int(0));
+                u2 field_idx = READ_U2();
+                cp_info *fcp = &class_info->cp[field_idx];
+                jvm_object *obj = (jvm_object*)jvm_stack_pop(thread).ref;
+                if (obj) {
+                    u2 field_class_idx = fcp->data.member_ref.class_index;
+                    cp_info *fc = &class_info->cp[field_class_idx];
+                    jvm_class *fc_cls = jvm_find_class(jvm, cp_utf8(class_info, fc->data.class_ref.class_index));
+                    int off = -1;
+                    if (fc_cls) {
+                        for (u2 fi = 0; fi < fc_cls->fields_count; fi++) {
+                            cp_info *nat = &class_info->cp[fcp->data.member_ref.nat_index];
+                            char *fn = cp_utf8(class_info, nat->data.name_and_type.name_index);
+                            char *ffn = cp_utf8(fc_cls, fc_cls->fields[fi].name_index);
+                            if (fn && ffn && strcmp(fn, ffn) == 0) { off = fi * (int)sizeof(jvm_value); break; }
+                        }
+                    }
+                    if (off >= 0 && off + (int)sizeof(jvm_value) <= (int)obj->data_size) {
+                        jvm_value v; memcpy(&v, obj->data + off, sizeof(jvm_value));
+                        jvm_stack_push(thread, v);
+                    } else {
+                        jvm_stack_push(thread, make_int(0));
+                    }
+                } else {
+                    jvm_stack_push(thread, make_int(0));
+                }
                 break;
             }
             case 0xb5: { /* putfield */
-                jvm_stack_pop(thread);
-                jvm_stack_pop(thread);
-                READ_U2();
+                u2 field_idx = READ_U2();
+                cp_info *fcp = &class_info->cp[field_idx];
+                jvm_value val = jvm_stack_pop(thread);
+                jvm_object *obj = (jvm_object*)jvm_stack_pop(thread).ref;
+                if (obj) {
+                    u2 field_class_idx = fcp->data.member_ref.class_index;
+                    cp_info *fc = &class_info->cp[field_class_idx];
+                    jvm_class *fc_cls = jvm_find_class(jvm, cp_utf8(class_info, fc->data.class_ref.class_index));
+                    int off = -1;
+                    if (fc_cls) {
+                        for (u2 fi = 0; fi < fc_cls->fields_count; fi++) {
+                            cp_info *nat = &class_info->cp[fcp->data.member_ref.nat_index];
+                            char *fn = cp_utf8(class_info, nat->data.name_and_type.name_index);
+                            char *ffn = cp_utf8(fc_cls, fc_cls->fields[fi].name_index);
+                            if (fn && ffn && strcmp(fn, ffn) == 0) { off = fi * (int)sizeof(jvm_value); break; }
+                        }
+                    }
+                    if (off >= 0 && off + (int)sizeof(jvm_value) <= (int)obj->data_size)
+                        memcpy(obj->data + off, &val, sizeof(jvm_value));
+                }
                 break;
             }
 
@@ -677,20 +717,32 @@ jvm_value jvm_execute_method(jvm_instance *jvm, jvm_class *class_info,
                 u2 idx = READ_U2();
                 cp_info *cp = &class_info->cp[idx];
                 cp_info *nat = &class_info->cp[cp->data.member_ref.nat_index];
+                cp_info *cls_ref = &class_info->cp[cp->data.member_ref.class_index];
                 char *mname = cp_utf8(class_info, nat->data.name_and_type.name_index);
                 char *desc  = cp_utf8(class_info, nat->data.name_and_type.desc_index);
-                (void)mname; (void)desc;
-                jvm_stack_pop(thread); /* pop object ref */
-                jvm_stack_push(thread, make_int(0));
+                char *cname = cp_utf8(class_info, cls_ref->data.class_ref.class_index);
+                if (cname && mname && desc) {
+                    native_method_fn native = find_native(cname, mname, desc);
+                    if (native) {
+                        native(jvm, thread);
+                    } else {
+                        jvm_stack_pop(thread);
+                        jvm_stack_push(thread, make_int(0));
+                    }
+                } else {
+                    jvm_stack_pop(thread);
+                    jvm_stack_push(thread, make_int(0));
+                }
                 break;
             }
             case 0xb7: { /* invokespecial */
                 u2 idx = READ_U2();
                 cp_info *cp = &class_info->cp[idx];
                 cp_info *nat = &class_info->cp[cp->data.member_ref.nat_index];
+                cp_info *cls_ref = &class_info->cp[cp->data.member_ref.class_index];
                 char *mname = cp_utf8(class_info, nat->data.name_and_type.name_index);
                 char *desc  = cp_utf8(class_info, nat->data.name_and_type.desc_index);
-                char *cname = cp_utf8(class_info, cp->data.member_ref.class_index);
+                char *cname = cp_utf8(class_info, cls_ref->data.class_ref.class_index);
 
                 if (cname && mname && desc) {
                     native_method_fn native = find_native(cname, mname, desc);

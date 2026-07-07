@@ -19,6 +19,7 @@ static int    tone_active = 0;
 static double tone_phase = 0.0;
 static double tone_freq = 440.0;
 static int    tone_vol = 80;
+static int    tone_samples_remaining = 0;
 
 /* Audio buffer for output */
 static int16_t audio_buffer[AUDIO_BUFFER_SIZE * AUDIO_CHANNELS];
@@ -126,12 +127,19 @@ void audio_update(void) {
     if (tone_active) {
         double amp = (tone_vol / 100.0) * 20000.0;
         double phase_inc = (2.0 * PI * tone_freq) / AUDIO_SAMPLE_RATE;
-        for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
+        int to_mix = AUDIO_BUFFER_SIZE;
+        if (tone_samples_remaining > 0 && tone_samples_remaining < to_mix)
+            to_mix = tone_samples_remaining;
+        for (int i = 0; i < to_mix; i++) {
             int16_t s = (int16_t)(sin(tone_phase) * amp);
             mix_buf[i * 2]     += s;
             mix_buf[i * 2 + 1] += s;
             tone_phase += phase_inc;
             if (tone_phase >= 2.0 * PI) tone_phase -= 2.0 * PI;
+        }
+        if (tone_samples_remaining > 0) {
+            tone_samples_remaining -= to_mix;
+            if (tone_samples_remaining <= 0) tone_active = 0;
         }
     }
 
@@ -144,13 +152,7 @@ void audio_play_tone(int note, int duration_ms, int volume) {
     tone_freq = audio_note_to_freq(note);
     tone_vol = (volume > 100) ? 100 : (volume < 0 ? 0 : volume);
     tone_phase = 0.0;
-
-    /* Schedule stop after duration */
-    int iterations = (duration_ms * AUDIO_SAMPLE_RATE) / (1000 * AUDIO_BUFFER_SIZE);
-    for (int i = 0; i < iterations; i++) {
-        audio_update();
-    }
-    tone_active = 0;
+    tone_samples_remaining = (duration_ms * AUDIO_SAMPLE_RATE) / 1000;
 }
 
 void audio_tone_start(int note, int volume) {
@@ -158,10 +160,12 @@ void audio_tone_start(int note, int volume) {
     tone_freq = audio_note_to_freq(note);
     tone_vol = (volume > 100) ? 100 : (volume < 0 ? 0 : volume);
     tone_phase = 0.0;
+    tone_samples_remaining = 0; /* continuous until stopped */
 }
 
 void audio_tone_stop(void) {
     tone_active = 0;
+    tone_samples_remaining = 0;
 }
 
 int audio_is_playing(void) {

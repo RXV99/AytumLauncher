@@ -19,6 +19,7 @@ int network_init(void) {
 
     /* Initialize SceNet */
     SceNetInitParam init_param;
+    memset(&init_param, 0, sizeof(init_param));
     init_param.memory = net_memory;
     init_param.size = NET_MEMORY_SIZE;
     init_param.flags = 0;
