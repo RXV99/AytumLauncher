@@ -15,7 +15,7 @@ include("${VITASDK}/share/vita.cmake" REQUIRED)
 set(VITA_APP_NAME "Java ME Emulator")
 set(VITA_TITLEID  "JAVAME00001")
 set(VITA_VERSION  "01.00")
-set(VITA_CATEGORY "gp")
+set(VITA_CATEGORY "gd")
 
 # vita_create_vpk doesn't read VITA_CATEGORY; must pass it to mksfoex explicitly
 set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -s CATEGORY=${VITA_CATEGORY}")
