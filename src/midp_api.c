@@ -11,6 +11,8 @@
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/kernel/sysmem.h>
 
+#define JVM_UNUSED
+
 /* ============================================================
  * javax.microedition.midlet.MIDlet
  * ============================================================ */
@@ -950,7 +952,7 @@ static void native_manager_create_player(JVM_UNUSED jvm_instance *jvm, jvm_threa
  * ============================================================ */
 
 static audio_player *get_this_player(jvm_thread *thread) {
-    void *ref = jvm_stack_pop(thread);
+    void *ref = jvm_stack_pop(thread).ref;
     int h = (int)(uintptr_t)ref;
     return player_from_handle(h);
 }

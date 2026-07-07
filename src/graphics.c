@@ -11,7 +11,6 @@
 
 /* Default vita2d texture font */
 static vita2d_font *vita_font = NULL;
-static vita2d_texture *vita_texture = NULL;
 
 static int current_color = 0x000000;
 static int translate_x = 0;
@@ -25,7 +24,7 @@ static int clip_x = 0, clip_y = 0, clip_w = 960, clip_h = 544;
 int lcdui_init(void) {
     vita2d_init();
     vita2d_set_clear_color(RGBA8(0xFF, 0xFF, 0xFF, 0xFF));
-    vita_font = vita2d_load_default_font();
+    vita_font = vita2d_load_default_pvf();
     clip_w = VITA_DISPLAY_W;
     clip_h = VITA_DISPLAY_H;
     return 0;
@@ -122,7 +121,7 @@ void lcdui_fill_rect(int x, int y, int w, int h) {
         current_color & 0xFF,
         0xFF
     );
-    vita2d_draw_fill_rect(x, y, w, h, c);
+    vita2d_draw_rectangle(x, y, w, h, c);
 }
 
 void lcdui_draw_round_rect(int x, int y, int w, int h, int aw, int ah) {
@@ -159,20 +158,13 @@ void lcdui_draw_triangle(int x1, int y1, int x2, int y2, int x3, int y3) {
         current_color & 0xFF,
         0xFF
     );
-    vita2d_draw_triangle(x1, y1, x2, y2, x3, y3, c);
+    vita2d_draw_line(x1, y1, x2, y2, c);
+    vita2d_draw_line(x2, y2, x3, y3, c);
+    vita2d_draw_line(x3, y3, x1, y1, c);
 }
 
 void lcdui_fill_triangle(int x1, int y1, int x2, int y2, int x3, int y3) {
-    x1 += translate_x; y1 += translate_y;
-    x2 += translate_x; y2 += translate_y;
-    x3 += translate_x; y3 += translate_y;
-    unsigned int c = RGBA8(
-        (current_color >> 16) & 0xFF,
-        (current_color >> 8) & 0xFF,
-        current_color & 0xFF,
-        0xFF
-    );
-    vita2d_draw_fill_triangle(x1, y1, x2, y2, x3, y3, c);
+    lcdui_draw_triangle(x1, y1, x2, y2, x3, y3);
 }
 
 /* Text rendering */
