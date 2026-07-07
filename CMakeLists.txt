@@ -40,6 +40,7 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     vita2d
+    SceSysmodule_stub
     SceNet_stub SceNetCtl_stub
     SceAudio_stub SceLibKernel_stub
     SceCtrl_stub SceTouch_stub

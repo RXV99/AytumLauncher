@@ -7,6 +7,7 @@
 #include <psp2/kernel/sysmem.h>
 #include <psp2/gxm.h>
 #include <psp2/display.h>
+#include <psp2/sysmodule.h>
 #include <vita2d.h>
 
 /* Default vita2d texture font */
@@ -22,6 +23,10 @@ static int clip_x = 0, clip_y = 0, clip_w = 960, clip_h = 544;
 #define VITA_DISPLAY_H 544
 
 int lcdui_init(void) {
+    /* Load font sysmodules (required on real hardware) */
+    sceSysmoduleLoadModule(SCE_SYSMODULE_PVF);
+    sceSysmoduleLoadModule(SCE_SYSMODULE_PGF);
+
     vita2d_init();
     vita2d_set_clear_color(RGBA8(0xFF, 0xFF, 0xFF, 0xFF));
     vita_font = vita2d_load_default_pvf();
