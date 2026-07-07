@@ -344,7 +344,7 @@ jvm_value jvm_execute_method(jvm_instance *jvm, jvm_class *class_info,
             if (native) {
                 jvm_thread *thread = &jvm->threads[0];
                 native(jvm, thread);
-                if (thread->stack_top >= 0)
+                if (thread->frames && thread->frames->stack_top >= 0)
                     return jvm_stack_pop(thread);
             }
         }
@@ -471,7 +471,7 @@ jvm_value jvm_execute_method(jvm_instance *jvm, jvm_class *class_info,
             case 0x2a: case 0x2b: case 0x2c: case 0x2d: /* aload_0-3 */
                 jvm_stack_push(thread, jvm_local_get(thread, opcode - 0x2a)); break;
             case 0x2e: { /* iaload */
-                u2 idx = jvm_stack_pop(thread).i;
+                s4 idx = jvm_stack_pop(thread).i;
                 jvm_array *arr = (jvm_array*)jvm_stack_pop(thread).ref;
                 if (arr && idx >= 0 && idx < arr->length)
                     jvm_stack_push(thread, make_int(((s4*)arr->elements)[idx]));
@@ -594,13 +594,15 @@ jvm_value jvm_execute_method(jvm_instance *jvm, jvm_class *class_info,
             case 0xa6: { void *v2 = jvm_stack_pop(thread).ref; void *v1 = jvm_stack_pop(thread).ref; s2 offa6 = (s2)READ_U2(); if (v1 != v2) pc += offa6; else pc += 2; break; } /* if_acmpne */
 
             case 0xa7: { /* goto */
-                pc += (s2)READ_U2();
+                s2 off_a7 = (s2)READ_U2();
+                pc += off_a7;
                 break;
             }
             case 0xa8: { /* jsr */
                 jvm_value v; v.i = (s4)(uintptr_t)(pc + 2);
                 jvm_stack_push(thread, v);
-                pc += (s2)READ_U2();
+                s2 off_a8 = (s2)READ_U2();
+                pc += off_a8;
                 break;
             }
             case 0xa9: { /* ret */
