@@ -1,0 +1,21 @@
+name: Build VPK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: vitasdk/vitasdk:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build -j$(nproc)
+      - run: cd build && make vita-java-me.vpk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vita-java-me.vpk
+          path: build/vita-java-me.vpk
