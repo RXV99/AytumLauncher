@@ -23,8 +23,7 @@ static int clip_x = 0, clip_y = 0, clip_w = 960, clip_h = 544;
 #define VITA_DISPLAY_H 544
 
 int lcdui_init(void) {
-    /* Load font sysmodules (required on real hardware) */
-    sceSysmoduleLoadModule(SCE_SYSMODULE_PVF);
+    /* Load font sysmodule (required on real hardware - PGF also provides PVF) */
     sceSysmoduleLoadModule(SCE_SYSMODULE_PGF);
 
     vita2d_init();
