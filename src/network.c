@@ -18,9 +18,8 @@ static uint8_t net_memory[NET_MEMORY_SIZE] __attribute__((aligned(4096)));
 int network_init(void) {
     if (net_init) return 0;
 
-    /* Load net sysmodules (required on real hardware) */
+    /* Load net sysmodule (required on real hardware) */
     sceSysmoduleLoadModule(SCE_SYSMODULE_NET);
-    sceSysmoduleLoadModule(SCE_SYSMODULE_NETCTL);
 
     /* Initialize SceNet */
     SceNetInitParam init_param;
