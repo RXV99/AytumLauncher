@@ -1,4 +1,4 @@
-name: Build VPK
+name: Build VPK V2
 
 on:
   push:
@@ -53,19 +53,17 @@ with open('sce_sys/livearea/contents/startup.png','wb') as f: f.write(make_png(2
           set -e
           cd build
           echo "=== Converting ELF ==="
-          vita-elf-create vita-java-me.elf vita-java-me.velf
+          vita-elf-create vita-java-me.elf vita-java-me.velf 2>&1
           echo "=== Creating EBOOT ==="
-          vita-make-fself vita-java-me.velf eboot.bin
+          vita-make-fself vita-java-me.velf eboot.bin 2>&1
           echo "=== Copying sce_sys ==="
+          rm -rf sce_sys
           cp -r ../sce_sys .
           echo "=== Creating binary SFO ==="
-          vita-mksfoex -s TITLE_ID "Java ME Emulator" \
-            -d APP_VER=01.00 -d VERSION=01.00 \
-            -d CATEGORY=gde -d PARENTAL_LEVEL=1 \
-            -d BOOTABLE=1 -d ATTRIBUTE=0 \
-            sce_sys/param.sfo 2>&1
-          echo "=== Packing VPK ==="
-          vita-pack-vpk -s sce_sys/param.sfo -b eboot.bin ../vita-java-me.vpk 2>&1
+          vita-mksfoex -s JAVAME00001 "Java ME Emulator" sce_sys/param.sfo 2>&1
+          echo "=== Creating VPK (zip) ==="
+          cd ../build
+          zip -r ../vita-java-me.vpk eboot.bin sce_sys/ 2>&1
           echo "=== VPK created ==="
           ls -la ../vita-java-me.vpk
 
