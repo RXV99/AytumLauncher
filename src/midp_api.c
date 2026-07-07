@@ -13,6 +13,9 @@
 #include <vita2d.h>
 #include "decoder.h"
 
+#undef JVM_UNUSED
+#define JVM_UNUSED
+
 /* ============================================================
  * javax.microedition.midlet.MIDlet
  * ============================================================ */
