@@ -10,8 +10,8 @@
 #include <math.h>
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/kernel/sysmem.h>
-
-#define JVM_UNUSED
+#include <vita2d.h>
+#include "decoder.h"
 
 /* ============================================================
  * javax.microedition.midlet.MIDlet
@@ -310,11 +310,11 @@ static void native_displayable_set_title(JVM_UNUSED jvm_instance *jvm, jvm_threa
  * ============================================================ */
 
 static void native_system_current_time_millis(JVM_UNUSED jvm_instance *jvm, jvm_thread *thread) {
-    jvm_stack_push(thread, (jvm_value){.i = (s4)(sceKernelGetProcessTimeWide() / 1000)});
+    jvm_stack_push(thread, (jvm_value){.i = (s4)(sceKernelGetSystemTimeWide() / 1000)});
 }
 
 static void native_system_nano_time(JVM_UNUSED jvm_instance *jvm, jvm_thread *thread) {
-    jvm_stack_push(thread, (jvm_value){.i = (s4)(sceKernelGetProcessTimeWide() * 1000)});
+    jvm_stack_push(thread, (jvm_value){.i = (s4)(sceKernelGetSystemTimeWide() * 1000)});
 }
 
 static void native_system_array_copy(JVM_UNUSED jvm_instance *jvm, jvm_thread *thread) {

@@ -10,7 +10,7 @@
 #include <vita2d.h>
 
 /* Default vita2d texture font */
-static vita2d_font *vita_font = NULL;
+static vita2d_pvf *vita_font = NULL;
 
 static int current_color = 0x000000;
 static int translate_x = 0;
@@ -32,7 +32,7 @@ int lcdui_init(void) {
 
 void lcdui_shutdown(void) {
     if (vita_font) {
-        vita2d_free_font(vita_font);
+        vita2d_free_pvf(vita_font);
         vita_font = NULL;
     }
     vita2d_fini();
@@ -190,7 +190,7 @@ void lcdui_draw_string(const char *str, int x, int y, int anchor) {
         0xFF
     );
 
-    vita2d_font_draw_text(vita_font, tx, ty, c, 16, str);
+    vita2d_pvf_draw_text(vita_font, tx, ty, c, 16, str);
 }
 
 void lcdui_draw_char(char c, int x, int y, int anchor) {
@@ -200,7 +200,7 @@ void lcdui_draw_char(char c, int x, int y, int anchor) {
 
 int lcdui_string_width(const char *str) {
     if (!str || !vita_font) return 8 * (int)strlen(str);
-    return vita2d_font_text_width(vita_font, 16, str);
+    return vita2d_pvf_text_width(vita_font, 16, str);
 }
 
 int lcdui_char_width(char c) {
@@ -251,7 +251,7 @@ void lcdui_draw_image(lcdui_image *img, int x, int y, int anchor) {
         current_color & 0xFF,
         0xFF
     );
-    vita2d_draw_fill_rect(tx, ty, img->width, img->height, c);
+    vita2d_draw_rectangle(tx, ty, img->width, img->height, c);
 }
 
 void lcdui_get_image_dimensions(lcdui_image *img, int *w, int *h) {
