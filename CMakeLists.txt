@@ -33,7 +33,6 @@ set(SOURCES
     src/network.c
     src/audio.c
     src/decoder.c
-    src/pvf_stubs.c
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
@@ -45,6 +44,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     SceCtrl_stub SceTouch_stub
     SceDisplay_stub SceGxm_stub
     SceAppMgr_stub SceCommonDialog_stub
+    ScePvf_stub ScePgf_stub
     m
 )
 
