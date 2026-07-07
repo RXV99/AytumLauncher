@@ -24,14 +24,50 @@ jobs:
       - name: Build ELF
         run: cmake --build build -j$(nproc) --verbose 2>&1
 
+      - name: Generate placeholder icons
+        run: |
+          if [ ! -f sce_sys/icon0.png ]; then
+            python3 -c "
+import struct, zlib
+def make_png(w, h, r, g, b):
+    def chunk(t, d):
+        c = t + d
+        return struct.pack('>I', len(d)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+    raw = b''
+    for y in range(h):
+        raw += b'\x00' + bytes([r,g,b]) * w
+    return (b'\x89PNG\r\n\x1a\n' +
+            chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) +
+            chunk(b'IDAT', zlib.compress(raw)) +
+            chunk(b'IEND', b''))
+import os
+os.makedirs('sce_sys/livearea/contents', exist_ok=True)
+with open('sce_sys/icon0.png','wb') as f: f.write(make_png(128,128,64,80,160))
+with open('sce_sys/livearea/contents/bg.png','wb') as f: f.write(make_png(840,500,50,50,80))
+with open('sce_sys/livearea/contents/startup.png','wb') as f: f.write(make_png(280,158,64,80,160))
+"
+          fi
+
       - name: Create VPK
         run: |
           set -e
           cd build
+          echo "=== Converting ELF ==="
           vita-elf-create vita-java-me.elf vita-java-me.velf
+          echo "=== Creating EBOOT ==="
           vita-make-fself vita-java-me.velf eboot.bin
+          echo "=== Copying sce_sys ==="
           cp -r ../sce_sys .
-          vita-pack-vpk -s sce_sys/param.sfo -b eboot.bin ../vita-java-me.vpk
+          echo "=== Creating binary SFO ==="
+          vita-mksfoex -s TITLE_ID "Java ME Emulator" \
+            -d APP_VER=01.00 -d VERSION=01.00 \
+            -d CATEGORY=gde -d PARENTAL_LEVEL=1 \
+            -d BOOTABLE=1 -d ATTRIBUTE=0 \
+            sce_sys/param.sfo 2>&1
+          echo "=== Packing VPK ==="
+          vita-pack-vpk -s sce_sys/param.sfo -b eboot.bin ../vita-java-me.vpk 2>&1
+          echo "=== VPK created ==="
+          ls -la ../vita-java-me.vpk
 
       - name: Upload VPK
         uses: actions/upload-artifact@v4
