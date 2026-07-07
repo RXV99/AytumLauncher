@@ -23,16 +23,18 @@
 #define COL_SEP       0x22222E
 #define COL_SEL_BG    0xC8A02718
 
-#define SIDEBAR_W   164
-#define SIDEBAR_ITEM_H 48
-#define SIDEBAR_ITEM_GAP 10
-#define SIDEBAR_TOP_PAD 82
-#define SIDEBAR_TEXT_X 16
-#define SIDEBAR_ICON_X 14
+#define SIDEBAR_W      168
+#define SIDEBAR_ITEM_X 18
+#define SIDEBAR_ITEM_H 38
+#define SIDEBAR_ITEM_GAP 8
+#define SIDEBAR_TOP_PAD 84
 
-#define CONTENT_X   (SIDEBAR_W + 12)
-#define CONTENT_Y   18
-#define CONTENT_W   (960 - CONTENT_X - 12)
+#define CONTENT_X   (SIDEBAR_W + 28)
+#define CONTENT_Y   48
+#define CONTENT_W   (960 - CONTENT_X - 32)
+
+#define LIST_ROW_H  34
+#define LIST_ROW_GAP 6
 
 #define BROWSE_STATE_FILE "ux0:data/java/.browse_path"
 
@@ -385,8 +387,8 @@ static void render_sidebar(void) {
     lcdui_fill_rect(0, 0, SIDEBAR_W, 544);
 
     draw_gold_text("AYTUM", SIDEBAR_W / 2, 18, ANCHOR_HCENTER | ANCHOR_TOP);
-    draw_text("LAUNCHER", SIDEBAR_W / 2, 44, ANCHOR_HCENTER | ANCHOR_TOP, COL_GOLD_DIM);
-    draw_separator(8, 66, SIDEBAR_W - 16);
+    draw_text("LAUNCHER", SIDEBAR_W / 2, 42, ANCHOR_HCENTER | ANCHOR_TOP, COL_GOLD_DIM);
+    draw_separator(12, 62, SIDEBAR_W - 24);
 
     for (int i = 0; i < SECTION_COUNT; i++) {
         int y = SIDEBAR_TOP_PAD + i * (SIDEBAR_ITEM_H + SIDEBAR_ITEM_GAP);
@@ -406,9 +408,9 @@ static void render_sidebar(void) {
         }
 
         int col = is_sel ? COL_GOLD : (is_active ? COL_GOLD_DIM : COL_MUTED);
-        draw_text(section_icons[i], SIDEBAR_ICON_X, center_text_y(y, SIDEBAR_ITEM_H),
+        draw_text(section_icons[i], SIDEBAR_ITEM_X, center_text_y(y, SIDEBAR_ITEM_H),
                   ANCHOR_LEFT | ANCHOR_TOP, col);
-        draw_text(section_labels[i], SIDEBAR_TEXT_X + 22, center_text_y(y, SIDEBAR_ITEM_H),
+        draw_text(section_labels[i], SIDEBAR_ITEM_X + 24, center_text_y(y, SIDEBAR_ITEM_H),
                   ANCHOR_LEFT | ANCHOR_TOP, col);
     }
 }
@@ -419,14 +421,14 @@ static void render_recent(void) {
     int n = launcher_get_recent(recents, MAX_RECENT);
 
     draw_text("Recent", CONTENT_X, CONTENT_Y, ANCHOR_LEFT | ANCHOR_TOP, COL_WHITE);
-    draw_separator(CONTENT_X, CONTENT_Y + 26, CONTENT_W);
+    draw_separator(CONTENT_X, CONTENT_Y + 22, CONTENT_W);
 
     if (n == 0) {
         draw_text("No recently opened apps", 480, 240, ANCHOR_HCENTER | ANCHOR_TOP, COL_DIM);
     } else {
         for (int i = 0; i < n; i++) {
-            int row_y = 58 + i * 40;
-            int row_h = 36;
+            int row_y = CONTENT_Y + 32 + i * (LIST_ROW_H + LIST_ROW_GAP);
+            int row_h = LIST_ROW_H;
             if (i == recent_sel) {
                 lcdui_set_color(COL_SEL_BG);
                 lcdui_fill_rect(CONTENT_X, row_y, CONTENT_W, row_h);
@@ -438,7 +440,7 @@ static void render_recent(void) {
                       ANCHOR_LEFT | ANCHOR_TOP,
                       i == recent_sel ? COL_GOLD : COL_TEXT);
             draw_text(recents[i].path,
-                      CONTENT_X + 12, center_text_y(row_y, row_h) + 18,
+                      CONTENT_X + 12, center_text_y(row_y, row_h) + 16,
                       ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
         }
     }
@@ -446,17 +448,18 @@ static void render_recent(void) {
 
 static void render_browse(void) {
     draw_text("Browse", CONTENT_X, CONTENT_Y, ANCHOR_LEFT | ANCHOR_TOP, COL_WHITE);
-    draw_separator(CONTENT_X, CONTENT_Y + 26, CONTENT_W);
+    draw_separator(CONTENT_X, CONTENT_Y + 22, CONTENT_W);
 
-    draw_text(browse_path, CONTENT_X, 52, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
+    draw_text(browse_path, CONTENT_X, CONTENT_Y + 30, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
 
+    int first_row = CONTENT_Y + 50;
     int vis_end = browse_scroll + 11;
     if (vis_end > browse_item_count) vis_end = browse_item_count;
 
     for (int i = browse_scroll; i < vis_end; i++) {
         int idx = i - browse_scroll;
-        int row_y = 72 + idx * 38;
-        int row_h = 34;
+        int row_y = first_row + idx * (LIST_ROW_H + LIST_ROW_GAP);
+        int row_h = LIST_ROW_H;
         int is_sel = (i == browse_sel);
 
         if (is_sel) {
@@ -482,20 +485,21 @@ static void render_browse(void) {
     }
 
     if (browse_item_count == 0) {
-        draw_text("(empty)", CONTENT_X, 120, ANCHOR_LEFT | ANCHOR_TOP, COL_MUTED);
+        draw_text("(empty)", CONTENT_X, CONTENT_Y + 60, ANCHOR_LEFT | ANCHOR_TOP, COL_MUTED);
     }
 
     if (browse_item_count > 11) {
-        int bar_h = (11 * 400) / browse_item_count;
-        int bar_y = 72 + (browse_sel * (400 - bar_h)) / browse_item_count;
+        int scroll_h = 400;
+        int bar_h = (11 * scroll_h) / browse_item_count;
+        int bar_y = first_row + (browse_sel * (scroll_h - bar_h)) / browse_item_count;
         lcdui_set_color(COL_GOLD_DIM);
-        lcdui_fill_rect(944, bar_y, 4, bar_h > 6 ? bar_h : 6);
+        lcdui_fill_rect(960 - 8, bar_y, 4, bar_h > 6 ? bar_h : 6);
     }
 }
 
 static void render_settings(void) {
     draw_text("Settings", CONTENT_X, CONTENT_Y, ANCHOR_LEFT | ANCHOR_TOP, COL_WHITE);
-    draw_separator(CONTENT_X, CONTENT_Y + 26, CONTENT_W);
+    draw_separator(CONTENT_X, CONTENT_Y + 22, CONTENT_W);
 
     const char *items[] = {
         "Internal Resolution",
@@ -503,8 +507,8 @@ static void render_settings(void) {
     int item_count = 1;
 
     for (int i = 0; i < item_count; i++) {
-        int row_y = 68 + i * 44;
-        int row_h = 38;
+        int row_y = CONTENT_Y + 32 + i * (LIST_ROW_H + LIST_ROW_GAP);
+        int row_h = LIST_ROW_H;
         if (i == settings_sel) {
             lcdui_set_color(COL_SEL_BG);
             lcdui_fill_rect(CONTENT_X, row_y, CONTENT_W, row_h);
@@ -519,12 +523,13 @@ static void render_settings(void) {
     }
 
     draw_text("Cross: Cycle resolution", CONTENT_X + 12,
-              68 + item_count * 44 + 12, ANCHOR_LEFT | ANCHOR_TOP, COL_MUTED);
+              CONTENT_Y + 32 + item_count * (LIST_ROW_H + LIST_ROW_GAP) + 8,
+              ANCHOR_LEFT | ANCHOR_TOP, COL_MUTED);
 }
 
 static void render_about(void) {
     draw_text("About", CONTENT_X, CONTENT_Y, ANCHOR_LEFT | ANCHOR_TOP, COL_WHITE);
-    draw_separator(CONTENT_X, CONTENT_Y + 26, CONTENT_W);
+    draw_separator(CONTENT_X, CONTENT_Y + 22, CONTENT_W);
 
     draw_gold_text("Aytum Java Launcher", 480, 90, ANCHOR_HCENTER | ANCHOR_TOP);
     draw_text("Java ME Emulator for PS Vita", 480, 122, ANCHOR_HCENTER | ANCHOR_TOP, COL_TEXT);
@@ -599,10 +604,9 @@ static void render_footer(void) {
 static launcher_result handle_pointer(int px, int py, const char **sel_path, jad_info *sel_info) {
     /* Sidebar hit */
     if (px < SIDEBAR_W) {
-        int start_y = 82;
         for (int i = 0; i < SECTION_COUNT; i++) {
-            int y0 = start_y + i * 58;
-            if (py >= y0 && py < y0 + 48) {
+            int y0 = SIDEBAR_TOP_PAD + i * (SIDEBAR_ITEM_H + SIDEBAR_ITEM_GAP);
+            if (py >= y0 && py < y0 + SIDEBAR_ITEM_H) {
                 if (i == current_section && !sidebar_focus) {
                     sidebar_focus = 1;
                 } else {

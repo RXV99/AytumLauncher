@@ -11,6 +11,7 @@
 #include <vita2d.h>
 
 /* Default vita2d texture font */
+#define LCDUI_FONT_SIZE 12.0f
 static vita2d_pvf *vita_font = NULL;
 
 static int current_color = 0x000000;
@@ -29,6 +30,7 @@ int lcdui_init(void) {
     vita2d_init();
     vita2d_set_clear_color(RGBA8(0xFF, 0xFF, 0xFF, 0xFF));
     vita_font = vita2d_load_default_pvf();
+    lcdui_update_font_metrics();
     clip_w = VITA_DISPLAY_W;
     clip_h = VITA_DISPLAY_H;
     return 0;
@@ -98,10 +100,10 @@ static int font_total_height = 0;
 
 static void lcdui_update_font_metrics(void) {
     if (!vita_font) return;
-    font_total_height = vita2d_pvf_text_height(vita_font, 12, "Ay");
-    font_ascent = vita2d_pvf_text_height(vita_font, 12, "A");
+    font_total_height = vita2d_pvf_text_height(vita_font, LCDUI_FONT_SIZE, "Ay");
+    font_ascent = vita2d_pvf_text_height(vita_font, LCDUI_FONT_SIZE, "A");
     if (font_ascent <= 0) font_ascent = font_total_height * 4 / 5;
-    if (font_total_height <= 0) font_total_height = 18;
+    if (font_total_height <= 0) font_total_height = (int)LCDUI_FONT_SIZE;
 }
 
 /* Drawing primitives */
@@ -210,7 +212,7 @@ void lcdui_draw_string(const char *str, int x, int y, int anchor) {
         0xFF
     );
 
-    vita2d_pvf_draw_text(vita_font, tx, baseline_y, c, 12, str);
+    vita2d_pvf_draw_text(vita_font, tx, baseline_y, c, LCDUI_FONT_SIZE, str);
 }
 
 void lcdui_draw_char(char c, int x, int y, int anchor) {
@@ -219,8 +221,8 @@ void lcdui_draw_char(char c, int x, int y, int anchor) {
 }
 
 int lcdui_string_width(const char *str) {
-    if (!str || !vita_font) return 6 * (int)strlen(str);
-    return vita2d_pvf_text_width(vita_font, 12, str);
+    if (!str || !vita_font) return ((int)LCDUI_FONT_SIZE / 2) * (int)strlen(str);
+    return vita2d_pvf_text_width(vita_font, LCDUI_FONT_SIZE, str);
 }
 
 int lcdui_char_width(char c) {
@@ -229,7 +231,8 @@ int lcdui_char_width(char c) {
 }
 
 int lcdui_font_height(void) {
-    return 18;
+    if (font_total_height <= 0) return (int)LCDUI_FONT_SIZE;
+    return font_total_height;
 }
 
 /* Image operations */
