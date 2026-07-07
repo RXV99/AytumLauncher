@@ -28,23 +28,7 @@ jobs:
         run: python3 scripts/gen_icons.py
 
       - name: Create VPK
-        run: |
-          set -e
-          cd build
-          echo "=== Converting ELF ==="
-          vita-elf-create vita-java-me.elf vita-java-me.velf 2>&1
-          echo "=== Creating EBOOT ==="
-          vita-make-fself vita-java-me.velf eboot.bin 2>&1
-          echo "=== Copying sce_sys ==="
-          rm -rf sce_sys
-          cp -r ../sce_sys .
-          echo "=== Creating binary SFO ==="
-          vita-mksfoex -s JAVAME00001 "Java ME Emulator" sce_sys/param.sfo 2>&1
-          echo "=== Creating VPK (zip) ==="
-          cd ../build
-          zip -r ../vita-java-me.vpk eboot.bin sce_sys/ 2>&1
-          echo "=== VPK created ==="
-          ls -la ../vita-java-me.vpk
+        run: python3 scripts/package_vpk.py
 
       - name: Upload VPK
         uses: actions/upload-artifact@v4
