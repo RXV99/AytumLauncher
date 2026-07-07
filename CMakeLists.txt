@@ -4,15 +4,6 @@ project(vita-java-me C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 11)
 
-if(DEFINED ENV{VITASDK})
-    set(VITASDK $ENV{VITASDK})
-else()
-    set(VITASDK "/usr/local/vitasdk")
-endif()
-
-set(CMAKE_TOOLCHAIN_FILE "${VITASDK}/share/vita.toolchain.cmake"
-    CACHE PATH "Vita SDK toolchain")
-
 add_definitions(-DPSP2 -D__PSP2__ -DVITA)
 
 set(SOURCES
