@@ -2,7 +2,7 @@ import struct, zipfile, os, sys, subprocess, shutil
 
 os.chdir("build")
 print("=== Converting ELF ===")
-subprocess.run(["vita-elf-create", "vita-java-me.elf", "vita-java-me.velf"], check=True)
+subprocess.run(["vita-elf-create", "vita-java-me", "vita-java-me.velf"], check=True)
 print("=== Creating EBOOT ===")
 subprocess.run(["vita-make-fself", "vita-java-me.velf", "eboot.bin"], check=True)
 
