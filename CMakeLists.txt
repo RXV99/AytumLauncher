@@ -52,11 +52,6 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     -Wall -Wextra -Wno-unused-parameter -O2
 )
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    OUTPUT_NAME "vita-java-me"
-    SUFFIX ".elf"
-)
-
 vita_create_self(${PROJECT_NAME}.self ${PROJECT_NAME})
 vita_create_vpk(vita-java-me.vpk ${VITA_TITLEID} ${PROJECT_NAME}.self
   VERSION ${VITA_VERSION}
