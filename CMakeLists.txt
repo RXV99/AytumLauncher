@@ -41,3 +41,5 @@ set_target_properties(vita-java-me PROPERTIES
     OUTPUT_NAME "vita-java-me"
     SUFFIX ".elf"
 )
+
+vita_create_vpk(vita-java-me.vpk JAVAME00001 "Java ME Emulator" sce_sys/param.sfo)

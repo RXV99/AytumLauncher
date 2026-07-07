@@ -28,6 +28,36 @@ static jvm_instance *g_jvm = NULL;
 #define COL_DIM      0x707078
 #define COL_MUTED    0x505058
 
+/* Splashscreen colors */
+#define COL_SPLASH_BG  0x0A0A0F
+#define COL_SPLASH_GOLD 0xC8A027
+#define COL_SPLASH_DIM 0x707078
+
+static void draw_splashscreen(void) {
+    lcdui_begin_frame();
+    lcdui_clear(COL_SPLASH_BG);
+
+    lcdui_set_color(COL_SPLASH_GOLD);
+    lcdui_draw_string("AYTUM", 480, 180, ANCHOR_HCENTER | ANCHOR_TOP);
+    lcdui_set_color(0x8A6F1A);
+    lcdui_draw_string("JAVA LAUNCHER", 480, 220, ANCHOR_HCENTER | ANCHOR_TOP);
+
+    lcdui_set_color(0x1E1A0E);
+    lcdui_fill_rect(340, 248, 280, 1);
+
+    lcdui_set_color(COL_SPLASH_DIM);
+    lcdui_draw_string("Java ME Emulator for PS Vita", 480, 270, ANCHOR_HCENTER | ANCHOR_TOP);
+
+    lcdui_set_color(0x505058);
+    lcdui_draw_string("Developed using DeepSeek V4", 480, 300, ANCHOR_HCENTER | ANCHOR_TOP);
+
+    lcdui_set_color(0x404048);
+    lcdui_draw_string("v1.0", 480, 340, ANCHOR_HCENTER | ANCHOR_TOP);
+
+    lcdui_end_frame();
+    sceKernelDelayThread(2 * 1000 * 1000);
+}
+
 static int load_jar_into_jvm(jvm_instance *jvm, const char *jar_path) {
     size_t jar_size;
     uint8_t *jar_data = fileio_read_file(jar_path, &jar_size);
@@ -184,6 +214,8 @@ int main(int argc, char *argv[]) {
         printf("main: launcher init failed\n");
 
     printf("main: found %d app(s)\n", launcher_get_count());
+
+    draw_splashscreen();
 
     int running = 1;
     while (running) {

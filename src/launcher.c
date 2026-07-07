@@ -9,9 +9,7 @@
 #include <ctype.h>
 #include <strings.h>
 #include <psp2/kernel/threadmgr.h>
-#include <time.h>
 
-/* ── Aytum Launcher colour palette ── */
 #define COL_BG        0x0D0D12
 #define COL_SURFACE   0x15151E
 #define COL_SURFACE2  0x1C1C28
@@ -23,57 +21,190 @@
 #define COL_DIM       0x707078
 #define COL_MUTED     0x505058
 #define COL_SEP       0x22222E
-#define COL_SEL_BG    0xC8A02718  /* gold at ~10% */
-#define COL_FAV       0xF0C040
+#define COL_SEL_BG    0xC8A02718
 
+#define SIDEBAR_W   164
+#define CONTENT_X   (SIDEBAR_W + 12)
+#define CONTENT_W   (960 - CONTENT_X - 12)
+#define BROWSE_STATE_FILE "ux0:data/java/.browse_path"
+
+/* ── Browse entry ── */
+typedef struct {
+    char name[256];
+    char full_path[512];
+    int  is_dir;
+    int  is_jar;
+    int  is_jad;
+} browse_entry;
+
+/* ── Static state ── */
 static launcher_app apps[MAX_APPS];
 static int app_count = 0;
 
-/* ── Main menu state ── */
-static launcher_section current_section = SECTION_MAIN;
-static int main_sel = 0;       /* index in main menu */
+static launcher_section current_section = SECTION_RECENT;
+static int sidebar_sel = 0;
+static int sidebar_focus = 1;
+
+/* Browse */
+static browse_entry *browse_items = NULL;
+static int browse_item_count = 0;
 static int browse_sel = 0;
+static int browse_scroll = 0;
+static char browse_path[512] = "ux0:";
+
+/* Recent */
 static int recent_sel = 0;
-static int fav_sel = 0;
+
+/* Settings */
 static int settings_sel = 0;
-static int scroll_offset = 0;
-
-/* ── Menu labels ── */
-static const char *main_labels[MENU_COUNT] = {
-    "Recent",
-    "Browse",
-    "Favorites",
-    "Settings",
-    "Refresh",
-    "About",
+static const char *res_options[] = {
+    "960 x 544", "640 x 480", "480 x 320", "320 x 240"
 };
-static const char *main_icons[MENU_COUNT] = {
-    "\xC2\xBB", /* » */
-    "\xE2\x97\x8B", /* ○ */
-    "\xE2\x98\x85", /* ★ */
-    "\xE2\x9A\x99", /* ⚙ */
-    "\xE2\x86\xBB", /* ↻ */
-    "\xE2\x93\xA1", /* ⓡ */
-};
+static int res_count = 4;
+static int res_current = 0;
 
-/* ── Recent tracking ── */
-#define RECENT_FILE "ux0:data/java/.recent"
-#define FAV_FILE    "ux0:data/java/.favorites"
+/* ── Section labels ── */
+static const char *section_labels[SECTION_COUNT] = {
+    "Recents", "Browse", "Settings", "About"
+};
+static const char *section_icons[SECTION_COUNT] = {
+    "\xC2\xBB",
+    "\xE2\x97\x8B",
+    "\xE2\x9A\x99",
+    "\xE2\x93\xA1",
+};
 
 /* ── Internal helpers ── */
+static void draw_gold_text(const char *text, int x, int y, int anchor) {
+    lcdui_set_color(COL_GOLD);
+    lcdui_draw_string(text, x, y, anchor);
+}
+
+static void draw_text(const char *text, int x, int y, int anchor, int color) {
+    lcdui_set_color(color);
+    lcdui_draw_string(text, x, y, anchor);
+}
+
+static void draw_separator(int x, int y, int w) {
+    lcdui_set_color(COL_SEP);
+    lcdui_draw_line(x, y, x + w, y);
+}
+
+/* ── Browse directory lister ── */
+static void browse_free_items(void) {
+    if (browse_items) { free(browse_items); browse_items = NULL; }
+    browse_item_count = 0;
+}
+
+static int browse_list_dir(const char *path) {
+    browse_free_items();
+
+    int count;
+    char **names = fileio_list_dir(path, &count);
+    if (!names) return -1;
+
+    browse_items = (browse_entry*)calloc(count + 1, sizeof(browse_entry));
+    if (!browse_items) { fileio_free_list(names, count); return -1; }
+
+    int n = 0;
+    if (strcmp(path, "ux0:") != 0) {
+        strcpy(browse_items[n].name, "..");
+        snprintf(browse_items[n].full_path, sizeof(browse_items[n].full_path), "%s", path);
+        char *slash = strrchr(browse_items[n].full_path, '/');
+        if (slash) *slash = 0;
+        else        browse_items[n].full_path[0] = 0;
+        browse_items[n].is_dir = 1;
+        n++;
+    }
+
+    for (int i = 0; i < count; i++) {
+        if (names[i][0] == '.' && strcmp(names[i], "..") != 0) continue;
+
+        char full[512];
+        snprintf(full, sizeof(full), "%s/%s", path, names[i]);
+
+        int is_dir = fileio_is_directory(full);
+        int is_jar = !is_dir && fileio_has_extension(names[i], ".jar");
+        int is_jad = !is_dir && fileio_has_extension(names[i], ".jad");
+
+        if (!is_dir && !is_jar && !is_jad) continue;
+
+        strncpy(browse_items[n].name, names[i], sizeof(browse_items[n].name) - 1);
+        strncpy(browse_items[n].full_path, full, sizeof(browse_items[n].full_path) - 1);
+        browse_items[n].is_dir = is_dir;
+        browse_items[n].is_jar = is_jar;
+        browse_items[n].is_jad = is_jad;
+        n++;
+    }
+    fileio_free_list(names, count);
+
+    for (int i = 1; i < n - 1; i++) {
+        for (int j = i + 1; j < n; j++) {
+            int swap = 0;
+            if (browse_items[i].is_dir && !browse_items[j].is_dir) swap = 0;
+            else if (!browse_items[i].is_dir && browse_items[j].is_dir) swap = 1;
+            else if (browse_items[i].is_dir && browse_items[j].is_dir)
+                swap = strcasecmp(browse_items[i].name, browse_items[j].name) > 0;
+            else
+                swap = strcasecmp(browse_items[i].name, browse_items[j].name) > 0;
+            if (swap) {
+                browse_entry t = browse_items[i];
+                browse_items[i] = browse_items[j];
+                browse_items[j] = t;
+            }
+        }
+    }
+
+    browse_item_count = n;
+    browse_sel = 0;
+    browse_scroll = 0;
+    return n;
+}
+
+static void browse_enter_dir(const char *path) {
+    strncpy(browse_path, path, sizeof(browse_path) - 1);
+    launcher_save_browse_path(browse_path);
+    browse_list_dir(browse_path);
+}
+
+static void browse_go_up(void) {
+    if (strcmp(browse_path, "ux0:") == 0) {
+        sidebar_focus = 1;
+        return;
+    }
+    char *slash = strrchr(browse_path, '/');
+    if (slash) {
+        *slash = 0;
+        if (browse_path[0] == 0) strcpy(browse_path, "ux0:");
+    } else {
+        strcpy(browse_path, "ux0:");
+    }
+    launcher_save_browse_path(browse_path);
+    browse_list_dir(browse_path);
+}
 
 /* ── Launcher init / scan ── */
 int launcher_init(void) {
     app_count = 0;
-    current_section = SECTION_MAIN;
-    main_sel = 0;
+    current_section = SECTION_RECENT;
+    sidebar_sel = 0;
+    sidebar_focus = 1;
+    recent_sel = 0;
+    settings_sel = 0;
     browse_sel = 0;
-    scroll_offset = 0;
+    browse_scroll = 0;
+    browse_items = NULL;
+    browse_item_count = 0;
+
+    if (launcher_load_browse_path(browse_path, sizeof(browse_path)) != 0)
+        strcpy(browse_path, "ux0:");
+
     return launcher_scan();
 }
 
 void launcher_shutdown(void) {
     app_count = 0;
+    browse_free_items();
 }
 
 int launcher_scan(void) {
@@ -92,7 +223,6 @@ int launcher_scan(void) {
 
         snprintf(app->jar_path, sizeof(app->jar_path) - 1, "%s/%s", app_dir, files[i]);
 
-        /* Look for .jad */
         char *jad_name = (char*)malloc(strlen(files[i]) + 4);
         if (jad_name) {
             strcpy(jad_name, files[i]);
@@ -120,13 +250,11 @@ int launcher_scan(void) {
         }
         if (!app->vendor[0]) strncpy(app->vendor, "Unknown", sizeof(app->vendor) - 1);
         if (!app->version[0]) strncpy(app->version, "1.0", sizeof(app->version) - 1);
-        app->is_favorite = launcher_is_favorite(app->jar_path);
         app_count++;
     }
 
     fileio_free_list(files, file_count);
 
-    /* Sort by name */
     for (int i = 0; i < app_count - 1; i++)
         for (int j = i + 1; j < app_count; j++)
             if (strcasecmp(apps[i].name, apps[j].name) > 0) {
@@ -143,24 +271,22 @@ const launcher_app *launcher_get_app(int index) {
 }
 
 /* ── Recent tracking ── */
+#define RECENT_FILE "ux0:data/java/.recent"
+
 void launcher_add_recent(const char *jar_path, const char *name) {
-    /* Read existing recents */
     recent_entry recents[MAX_RECENT];
     int n = launcher_get_recent(recents, MAX_RECENT);
 
-    /* Check if already in list; if so, move to top */
     int found = -1;
     for (int i = 0; i < n; i++) {
         if (strcmp(recents[i].path, jar_path) == 0) { found = i; break; }
     }
 
-    char tmp[1024 * 4] = {0};
-    /* Write new one at top */
+    char tmp[4096] = {0};
     char line[1024];
     snprintf(line, sizeof(line), "%s|%s\n", jar_path, name ? name : "");
     strcat(tmp, line);
 
-    /* Write rest (skip found entry) */
     for (int i = 0; i < n && i < MAX_RECENT; i++) {
         if (i == found) continue;
         snprintf(line, sizeof(line), "%s|%s\n", recents[i].path, recents[i].name);
@@ -196,503 +322,267 @@ int launcher_get_recent(recent_entry *entries, int max) {
     return count;
 }
 
-/* ── Favorites ── */
-void launcher_toggle_favorite(const char *jar_path) {
-    if (!jar_path) return;
+/* ── Browse state persistence ── */
+void launcher_save_browse_path(const char *path) {
+    fileio_write_file(BROWSE_STATE_FILE, (uint8_t*)path, strlen(path));
+}
 
-    /* Read existing */
+int launcher_load_browse_path(char *path, int max_len) {
     size_t size;
-    uint8_t *data = fileio_read_file(FAV_FILE, &size);
-    char *old = (char*)data;
-
-    /* Check if already present */
-    if (old) {
-        char *p = old;
-        char *end = old + size;
-        while (p < end) {
-            char *nl = strchr(p, '\n');
-            if (nl) *nl = 0;
-            if (strcmp(p, jar_path) == 0) {
-                /* Remove it */
-                size_t remaining = end - (nl ? nl + 1 : end);
-                char *new_data = (char*)malloc(remaining + 1);
-                if (new_data) {
-                    memcpy(new_data, nl ? nl + 1 : end, remaining);
-                    new_data[remaining] = 0;
-                    fileio_write_file(FAV_FILE, (uint8_t*)new_data, remaining);
-                    free(new_data);
-                }
-                free(data);
-                /* Update the app entry if found */
-                for (int i = 0; i < app_count; i++)
-                    if (strcmp(apps[i].jar_path, jar_path) == 0)
-                        apps[i].is_favorite = 0;
-                return;
-            }
-            p = nl ? nl + 1 : end;
-        }
+    uint8_t *data = fileio_read_file(BROWSE_STATE_FILE, &size);
+    if (!data || size == 0) {
+        free(data);
+        return -1;
     }
-
-    /* Not found, add it */
-    char *new_data;
-    if (old) {
-        new_data = (char*)malloc(size + strlen(jar_path) + 2);
-        if (new_data) {
-            memcpy(new_data, old, size);
-            new_data[size] = 0;
-            strcat(new_data, jar_path);
-            strcat(new_data, "\n");
-            fileio_write_file(FAV_FILE, (uint8_t*)new_data, strlen(new_data));
-            free(new_data);
-        }
-    } else {
-        char buf[1024];
-        snprintf(buf, sizeof(buf), "%s\n", jar_path);
-        fileio_write_file(FAV_FILE, (uint8_t*)buf, strlen(buf));
-    }
-
+    if (data[size - 1] == '\n') data[size - 1] = 0;
+    strncpy(path, (char*)data, max_len - 1);
     free(data);
-    for (int i = 0; i < app_count; i++)
-        if (strcmp(apps[i].jar_path, jar_path) == 0)
-            apps[i].is_favorite = 1;
+    return 0;
 }
 
-int launcher_is_favorite(const char *jar_path) {
-    if (!jar_path) return 0;
-    size_t size;
-    uint8_t *data = fileio_read_file(FAV_FILE, &size);
-    if (!data) return 0;
-    int found = 0;
-    char *p = (char*)data;
-    char *end = p + size;
-    while (p < end) {
-        char *nl = strchr(p, '\n');
-        if (nl) *nl = 0;
-        if (strcmp(p, jar_path) == 0) { found = 1; break; }
-        p = nl ? nl + 1 : end;
-    }
-    free(data);
-    return found;
-}
+/* ── Sidebar render ── */
+static void render_sidebar(void) {
+    lcdui_set_color(COL_SURFACE2);
+    lcdui_fill_rect(0, 0, SIDEBAR_W, 544);
 
-int launcher_get_favorites(launcher_app **favs, int *count) {
-    *favs = NULL;
-    *count = 0;
+    draw_gold_text("AYTUM", SIDEBAR_W / 2, 18, ANCHOR_HCENTER | ANCHOR_TOP);
+    draw_text("LAUNCHER", SIDEBAR_W / 2, 44, ANCHOR_HCENTER | ANCHOR_TOP, COL_GOLD_DIM);
+    draw_separator(8, 66, SIDEBAR_W - 16);
 
-    size_t size;
-    uint8_t *data = fileio_read_file(FAV_FILE, &size);
-    if (!data) return 0;
+    int start_y = 82;
+    for (int i = 0; i < SECTION_COUNT; i++) {
+        int y = start_y + i * 58;
+        int is_sel = (i == sidebar_sel);
+        int is_active = (i == current_section && !sidebar_focus);
 
-    /* Count favorites */
-    int total = 0;
-    char *p = (char*)data;
-    char *end = p + size;
-    while (p < end) {
-        char *nl = strchr(p, '\n');
-        if (nl) *nl = 0;
-        /* Find matching app */
-        for (int i = 0; i < app_count; i++) {
-            if (strcmp(apps[i].jar_path, p) == 0) {
-                total++;
-                break;
-            }
+        if (is_sel && sidebar_focus) {
+            lcdui_set_color(COL_GOLD);
+            lcdui_fill_rect(0, y, 4, 48);
+            lcdui_set_color(COL_SEL_BG);
+            lcdui_fill_rect(4, y, SIDEBAR_W - 4, 48);
+        } else if (is_active) {
+            lcdui_set_color(COL_GOLD_DIM);
+            lcdui_fill_rect(0, y, 3, 48);
+            lcdui_set_color(COL_GOLD_BG);
+            lcdui_fill_rect(4, y, SIDEBAR_W - 4, 48);
         }
-        p = nl ? nl + 1 : end;
-    }
 
-    if (total == 0) { free(data); return 0; }
-
-    *favs = (launcher_app*)calloc(total, sizeof(launcher_app));
-    if (!*favs) { free(data); return 0; }
-
-    int idx = 0;
-    p = (char*)data;
-    end = (char*)data + size;
-    while (p < end && idx < total) {
-        char *nl = strchr(p, '\n');
-        if (nl) *nl = 0;
-        for (int i = 0; i < app_count && idx < total; i++) {
-            if (strcmp(apps[i].jar_path, p) == 0) {
-                (*favs)[idx++] = apps[i];
-                break;
-            }
-        }
-        p = nl ? nl + 1 : end;
-    }
-
-    free(data);
-    *count = total;
-    return total;
-}
-
-/* ── Rendering helpers ── */
-static void draw_gold_text(const char *text, int x, int y, int anchor, int size) {
-    lcdui_set_color(COL_GOLD);
-    lcdui_draw_string(text, x, y, anchor);
-}
-
-static void draw_text(const char *text, int x, int y, int anchor, int color, int size) {
-    lcdui_set_color(color);
-    lcdui_draw_string(text, x, y, anchor);
-}
-
-static void draw_separator(int y) {
-    lcdui_set_color(COL_SEP);
-    lcdui_draw_line(32, y, 928, y);
-}
-
-static void draw_menu_item(const char *label, const char *icon, int x, int y,
-                           int selected, int badge, const char *sub) {
-    if (selected) {
-        /* Gold accent bar */
-        lcdui_set_color(COL_GOLD);
-        lcdui_fill_rect(x - 4, y, 4, 36);
-        /* Subtle background */
-        lcdui_set_color(COL_SEL_BG);
-        lcdui_fill_rect(x, y, 928 - x, 36);
-    }
-
-    /* Icon */
-    draw_gold_text(icon, x + 8, y + 8, ANCHOR_LEFT | ANCHOR_TOP, 18);
-
-    /* Label */
-    draw_text(label, x + 40, y + 6, ANCHOR_LEFT | ANCHOR_TOP,
-              selected ? COL_GOLD : COL_TEXT, 16);
-
-    /* Badge */
-    if (badge > 0) {
-        char b[8];
-        snprintf(b, sizeof(b), "%d", badge);
-        lcdui_set_color(COL_GOLD);
-        lcdui_fill_rect(910, y + 8, 24, 20);
-        lcdui_set_color(COL_BG);
-        lcdui_draw_string(b, 922, y + 10, ANCHOR_HCENTER | ANCHOR_TOP);
-    }
-
-    /* Subtitle */
-    if (sub) {
-        draw_text(sub, x + 40, y + 22, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM, 12);
+        int col = is_sel ? COL_GOLD : (is_active ? COL_GOLD_DIM : COL_MUTED);
+        draw_text(section_icons[i], 14, y + 12, ANCHOR_LEFT | ANCHOR_TOP, col);
+        draw_text(section_labels[i], 44, y + 14, ANCHOR_LEFT | ANCHOR_TOP, col);
     }
 }
 
-static void draw_logo(void) {
-    /* AYTUM LAUNCHER — centered, gold, prominent */
-    draw_gold_text("AYTUM", 480, 24, ANCHOR_HCENTER | ANCHOR_TOP, 32);
-    draw_text("LAUNCHER", 480, 58, ANCHOR_HCENTER | ANCHOR_TOP, COL_GOLD_DIM, 14);
-
-    /* Gold underline */
-    lcdui_set_color(COL_GOLD_DIM);
-    lcdui_draw_line(360, 80, 600, 80);
-}
-
-static void draw_footer(const char *text) {
-    lcdui_set_color(COL_SURFACE);
-    lcdui_fill_rect(0, 510, 960, 34);
-    lcdui_set_color(COL_MUTED);
-    lcdui_draw_string(text ? text : "Cross: Select   Triangle: Back   Circle: Refresh",
-                      16, 516, ANCHOR_LEFT | ANCHOR_TOP);
-    lcdui_set_color(COL_DIM);
-    lcdui_draw_string("v1.0", 940, 516, ANCHOR_RIGHT | ANCHOR_TOP);
-}
-
-/* ── Screen renders ── */
-static void render_main(void) {
-    int recent_count = launcher_get_recent(NULL, 0);
-    int fav_count = 0;
-    launcher_app *favs = NULL;
-    launcher_get_favorites(&favs, &fav_count);
-    free(favs);
-
-    draw_logo();
-
-    int start_y = 104;
-    for (int i = 0; i < MENU_COUNT; i++) {
-        int y = start_y + i * 52;
-        int badge = 0;
-        const char *sub = NULL;
-        char sub_buf[64];
-
-        if (i == MENU_RECENT && recent_count > 0) {
-            badge = recent_count;
-            snprintf(sub_buf, sizeof(sub_buf), "%d recently opened", recent_count);
-            sub = sub_buf;
-        }
-        if (i == MENU_FAVORITES && fav_count > 0) {
-            badge = fav_count;
-            snprintf(sub_buf, sizeof(sub_buf), "%d favorites", fav_count);
-            sub = sub_buf;
-        }
-        if (i == MENU_BROWSE) {
-            snprintf(sub_buf, sizeof(sub_buf), "%d apps available", app_count);
-            sub = sub_buf;
-        }
-        if (i == MENU_REFRESH) {
-            sub = "Rescan ux0:data/java/";
-        }
-        if (i == MENU_ABOUT) {
-            sub = "v1.0  |  Java ME Emulator";
-        }
-        if (i == MENU_SETTINGS) {
-            sub = "Volume, display, performance";
-        }
-
-        draw_menu_item(main_labels[i], main_icons[i], 40, y,
-                       i == main_sel, badge, sub);
-        draw_separator(y + 44);
-    }
-
-    char info[64];
-    snprintf(info, sizeof(info), "ux0:data/java/  -  %d app(s)", app_count);
-    draw_text(info, 480, 492, ANCHOR_HCENTER | ANCHOR_TOP, COL_MUTED, 12);
-
-    draw_footer("Cross: Select   Triangle: Quit   Circle: Refresh");
-}
-
+/* ── Content renders ── */
 static void render_recent(void) {
-    draw_text("RECENT", 480, 20, ANCHOR_HCENTER | ANCHOR_TOP, COL_GOLD, 22);
-    draw_separator(44);
-
     recent_entry recents[MAX_RECENT];
     int n = launcher_get_recent(recents, MAX_RECENT);
 
+    draw_text("Recent", CONTENT_X, 18, ANCHOR_LEFT | ANCHOR_TOP, COL_WHITE);
+    draw_separator(CONTENT_X, 44, CONTENT_W);
+
     if (n == 0) {
-        draw_text("No recently opened apps", 480, 200, ANCHOR_HCENTER | ANCHOR_TOP,
-                  COL_DIM, 16);
+        draw_text("No recently opened apps", 480, 240, ANCHOR_HCENTER | ANCHOR_TOP, COL_DIM);
     } else {
-        for (int i = 0; i < n && i < 12; i++) {
-            int y = 60 + i * 38;
+        for (int i = 0; i < n; i++) {
+            int y = 58 + i * 40;
             if (i == recent_sel) {
                 lcdui_set_color(COL_SEL_BG);
-                lcdui_fill_rect(32, y, 896, 34);
+                lcdui_fill_rect(CONTENT_X, y, CONTENT_W, 36);
                 lcdui_set_color(COL_GOLD);
-                lcdui_fill_rect(28, y, 4, 34);
+                lcdui_fill_rect(CONTENT_X, y, 4, 36);
             }
             draw_text(recents[i].name[0] ? recents[i].name : recents[i].path,
-                      48, y + 6, ANCHOR_LEFT | ANCHOR_TOP,
-                      i == recent_sel ? COL_GOLD : COL_TEXT, 16);
-            draw_text(recents[i].path, 48, y + 22, ANCHOR_LEFT | ANCHOR_TOP,
-                      COL_DIM, 12);
+                      CONTENT_X + 12, y + 4, ANCHOR_LEFT | ANCHOR_TOP,
+                      i == recent_sel ? COL_GOLD : COL_TEXT);
+            draw_text(recents[i].path,
+                      CONTENT_X + 12, y + 22, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
         }
     }
-
-    draw_footer(n > 0 ? "Cross: Launch   Square: Remove   Triangle: Back"
-                       : "Triangle: Back");
 }
 
 static void render_browse(void) {
-    draw_text("BROWSE", 480, 20, ANCHOR_HCENTER | ANCHOR_TOP, COL_GOLD, 22);
-    draw_separator(44);
+    draw_text("Browse", CONTENT_X, 18, ANCHOR_LEFT | ANCHOR_TOP, COL_WHITE);
+    draw_separator(CONTENT_X, 44, CONTENT_W);
 
-    /* Sub-header showing path */
-    draw_text(fileio_get_base_path(), 480, 48, ANCHOR_HCENTER | ANCHOR_TOP, COL_DIM, 12);
+    draw_text(browse_path, CONTENT_X, 48, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
 
-    int vis_start = scroll_offset;
-    int vis_end = vis_start + 12;
-    if (vis_end > app_count) vis_end = app_count;
+    int vis_end = browse_scroll + 11;
+    if (vis_end > browse_item_count) vis_end = browse_item_count;
 
-    for (int i = vis_start; i < vis_end; i++) {
-        int idx = i - vis_start;
+    for (int i = browse_scroll; i < vis_end; i++) {
+        int idx = i - browse_scroll;
         int y = 68 + idx * 38;
         int is_sel = (i == browse_sel);
 
         if (is_sel) {
             lcdui_set_color(COL_SEL_BG);
-            lcdui_fill_rect(32, y, 896, 34);
+            lcdui_fill_rect(CONTENT_X, y, CONTENT_W, 34);
             lcdui_set_color(COL_GOLD);
-            lcdui_fill_rect(28, y, 4, 34);
+            lcdui_fill_rect(CONTENT_X, y, 4, 34);
         }
 
-        const launcher_app *app = &apps[i];
-        draw_text(app->name, 48, y + 4, ANCHOR_LEFT | ANCHOR_TOP,
-                  is_sel ? COL_GOLD : COL_TEXT, 16);
-        char meta[128];
-        snprintf(meta, sizeof(meta), "%s  v%s", app->vendor, app->version);
-        draw_text(meta, 48, y + 22, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM, 12);
+        const char *prefix = browse_items[i].is_dir ? "\xE2\x96\xB6 " : "  ";
+        draw_text(prefix, CONTENT_X + 6, y + 4, ANCHOR_LEFT | ANCHOR_TOP,
+                  is_sel ? COL_GOLD : COL_TEXT);
+        draw_text(browse_items[i].name, CONTENT_X + 26, y + 4, ANCHOR_LEFT | ANCHOR_TOP,
+                  is_sel ? COL_GOLD : COL_TEXT);
 
-        if (app->is_favorite) {
-            draw_text("\xE2\x98\x85", 910, y + 4, ANCHOR_LEFT | ANCHOR_TOP, COL_FAV, 16);
+        if (browse_items[i].is_jar || browse_items[i].is_jad) {
+            draw_text("JAR", CONTENT_X + CONTENT_W - 4, y + 6,
+                      ANCHOR_RIGHT | ANCHOR_TOP, COL_MUTED);
+        } else if (browse_items[i].is_dir) {
+            draw_text("DIR", CONTENT_X + CONTENT_W - 4, y + 6,
+                      ANCHOR_RIGHT | ANCHOR_TOP, COL_DIM);
         }
     }
 
-    /* Scrollbar */
-    if (app_count > 12) {
-        int bar_h = (12 * 510) / app_count;
-        int bar_y = 68 + (browse_sel * (510 - bar_h)) / app_count;
+    if (browse_item_count == 0) {
+        draw_text("(empty)", CONTENT_X, 120, ANCHOR_LEFT | ANCHOR_TOP, COL_MUTED);
+    }
+
+    if (browse_item_count > 11) {
+        int bar_h = (11 * 400) / browse_item_count;
+        int bar_y = 68 + (browse_sel * (400 - bar_h)) / browse_item_count;
         lcdui_set_color(COL_GOLD_DIM);
-        lcdui_fill_rect(948, bar_y, 4, bar_h > 6 ? bar_h : 6);
+        lcdui_fill_rect(944, bar_y, 4, bar_h > 6 ? bar_h : 6);
     }
-
-    draw_footer("Cross: Launch   Square: Favorite   Triangle: Back");
-}
-
-static void render_favorites(void) {
-    draw_text("FAVORITES", 480, 20, ANCHOR_HCENTER | ANCHOR_TOP, COL_GOLD, 22);
-    draw_separator(44);
-
-    launcher_app *favs = NULL;
-    int fav_count = 0;
-    launcher_get_favorites(&favs, &fav_count);
-
-    if (fav_count == 0) {
-        draw_text("No favorites yet", 480, 200, ANCHOR_HCENTER | ANCHOR_TOP,
-                  COL_DIM, 16);
-        draw_text("Press Square while browsing to add", 480, 230,
-                  ANCHOR_HCENTER | ANCHOR_TOP, COL_MUTED, 12);
-    } else {
-        for (int i = 0; i < fav_count && i < 12; i++) {
-            int y = 60 + i * 38;
-            if (i == fav_sel) {
-                lcdui_set_color(COL_SEL_BG);
-                lcdui_fill_rect(32, y, 896, 34);
-                lcdui_set_color(COL_GOLD);
-                lcdui_fill_rect(28, y, 4, 34);
-            }
-            draw_text(favs[i].name, 48, y + 6, ANCHOR_LEFT | ANCHOR_TOP,
-                      i == fav_sel ? COL_GOLD : COL_TEXT, 16);
-            draw_text(favs[i].jar_path, 48, y + 22, ANCHOR_LEFT | ANCHOR_TOP,
-                      COL_DIM, 12);
-            draw_text("\xE2\x98\x85", 910, y + 4, ANCHOR_LEFT | ANCHOR_TOP, COL_FAV, 16);
-        }
-    }
-
-    free(favs);
-    draw_footer(fav_count > 0 ? "Cross: Launch   Square: Remove   Triangle: Back"
-                              : "Triangle: Back");
 }
 
 static void render_settings(void) {
-    draw_text("SETTINGS", 480, 20, ANCHOR_HCENTER | ANCHOR_TOP, COL_GOLD, 22);
-    draw_separator(44);
+    draw_text("Settings", CONTENT_X, 18, ANCHOR_LEFT | ANCHOR_TOP, COL_WHITE);
+    draw_separator(CONTENT_X, 44, CONTENT_W);
 
-    /* Settings items */
     const char *items[] = {
-        "Audio Volume",
-        "Screen Brightness",
+        "Internal Resolution",
     };
-    const char *values[] = {
-        "80%",
-        "100%",
-    };
-    int item_count = 2;
+    int item_count = 1;
 
     for (int i = 0; i < item_count; i++) {
         int y = 68 + i * 44;
         if (i == settings_sel) {
             lcdui_set_color(COL_SEL_BG);
-            lcdui_fill_rect(32, y, 896, 38);
+            lcdui_fill_rect(CONTENT_X, y, CONTENT_W, 38);
             lcdui_set_color(COL_GOLD);
-            lcdui_fill_rect(28, y, 4, 38);
+            lcdui_fill_rect(CONTENT_X, y, 4, 38);
         }
-        draw_text(items[i], 48, y + 8, ANCHOR_LEFT | ANCHOR_TOP,
-                  i == settings_sel ? COL_GOLD : COL_TEXT, 16);
-        draw_text(values[i], 900, y + 8, ANCHOR_RIGHT | ANCHOR_TOP, COL_DIM, 16);
+        draw_text(items[i], CONTENT_X + 12, y + 8, ANCHOR_LEFT | ANCHOR_TOP,
+                  i == settings_sel ? COL_GOLD : COL_TEXT);
+        draw_text(res_options[res_current], CONTENT_X + CONTENT_W - 12, y + 8,
+                  ANCHOR_RIGHT | ANCHOR_TOP, COL_DIM);
     }
 
-    draw_separator(68 + item_count * 44 + 4);
-    draw_text("More settings coming soon", 480, 68 + item_count * 44 + 16,
-              ANCHOR_HCENTER | ANCHOR_TOP, COL_MUTED, 12);
-
-    draw_footer("Triangle: Back");
+    draw_text("Cross: Cycle resolution", CONTENT_X + 12, 140,
+              ANCHOR_LEFT | ANCHOR_TOP, COL_MUTED);
 }
 
 static void render_about(void) {
-    draw_text("ABOUT", 480, 20, ANCHOR_HCENTER | ANCHOR_TOP, COL_GOLD, 22);
-    draw_separator(44);
+    draw_text("About", CONTENT_X, 18, ANCHOR_LEFT | ANCHOR_TOP, COL_WHITE);
+    draw_separator(CONTENT_X, 44, CONTENT_W);
 
-    draw_gold_text("AYTUM LAUNCHER", 480, 80, ANCHOR_HCENTER | ANCHOR_TOP, 28);
-    draw_text("Java ME Emulator for PS Vita", 480, 116, ANCHOR_HCENTER | ANCHOR_TOP,
-              COL_TEXT, 16);
+    draw_gold_text("Aytum Java Launcher", 480, 90, ANCHOR_HCENTER | ANCHOR_TOP);
+    draw_text("Java ME Emulator for PS Vita", 480, 122, ANCHOR_HCENTER | ANCHOR_TOP, COL_TEXT);
+    draw_separator(340, 150, 280);
 
-    draw_separator(148);
+    int ly = 176;
+    draw_text("Developer", CONTENT_X + 40, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
+    draw_text("RXV99", 360, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_TEXT);
+    ly += 30;
 
-    int ly = 168;
-    draw_text("Version", 100, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM, 14);
-    draw_text("1.0.0", 400, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_TEXT, 14);
-    ly += 28;
+    draw_text("Built with", CONTENT_X + 40, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
+    draw_text("DeepSeek V4", 360, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_TEXT);
+    ly += 30;
 
-    draw_text("Runtime", 100, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM, 14);
-    draw_text("Custom JVM + MIDP 2.0", 400, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_TEXT, 14);
-    ly += 28;
+    draw_text("Version", CONTENT_X + 40, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
+    draw_text("1.0.0", 360, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_TEXT);
+    ly += 30;
 
-    draw_text("Graphics", 100, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM, 14);
-    draw_text("libvita2d  |  960x544", 400, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_TEXT, 14);
-    ly += 28;
+    draw_text("Runtime", CONTENT_X + 40, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
+    draw_text("Custom JVM + MIDP 2.0", 360, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_TEXT);
+    ly += 30;
 
-    draw_text("Audio", 100, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM, 14);
-    draw_text("SceAudio  |  WAV/MP3 decoder", 400, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_TEXT, 14);
-    ly += 28;
+    draw_text("Graphics", CONTENT_X + 40, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
+    draw_text("libvita2d | 960x544", 360, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_TEXT);
+    ly += 30;
 
-    draw_text("Storage", 100, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM, 14);
-    draw_text("ux0:data/java/", 400, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_TEXT, 14);
-    ly += 28;
-
-    draw_text("Category", 100, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM, 14);
-    draw_text("Game | Homebrew", 400, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_TEXT, 14);
+    draw_text("Audio", CONTENT_X + 40, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_DIM);
+    draw_text("SceAudio | WAV/MP3", 360, ly, ANCHOR_LEFT | ANCHOR_TOP, COL_TEXT);
     ly += 40;
 
-    draw_text("built with vitasdk", 480, ly + 10, ANCHOR_HCENTER | ANCHOR_TOP, COL_MUTED, 12);
-
-    draw_footer("Triangle: Back");
+    draw_text("built with vitasdk", 480, ly, ANCHOR_HCENTER | ANCHOR_TOP, COL_MUTED);
 }
 
-/* ── Input handling per section ── */
-static launcher_result handle_main_input(int key) {
+/* ── Footer ── */
+static void render_footer(void) {
+    lcdui_set_color(COL_SURFACE);
+    lcdui_fill_rect(0, 510, 960, 34);
+    lcdui_set_color(COL_MUTED);
+
+    if (sidebar_focus) {
+        char buf[80];
+        snprintf(buf, sizeof(buf), "Cross: Open %s   Circle: Refresh   Triangle: Quit",
+                 section_labels[sidebar_sel]);
+        draw_text(buf, 12, 516, ANCHOR_LEFT | ANCHOR_TOP, COL_MUTED);
+    } else {
+        switch (current_section) {
+            case SECTION_RECENT:
+                draw_text("Cross: Launch   Square: Remove   Triangle: Back",
+                          12, 516, ANCHOR_LEFT | ANCHOR_TOP, COL_MUTED);
+                break;
+            case SECTION_BROWSE:
+                draw_text("Cross: Open   Triangle: Up / Back",
+                          12, 516, ANCHOR_LEFT | ANCHOR_TOP, COL_MUTED);
+                break;
+            case SECTION_SETTINGS:
+                draw_text("Triangle: Back",
+                          12, 516, ANCHOR_LEFT | ANCHOR_TOP, COL_MUTED);
+                break;
+            case SECTION_ABOUT:
+                draw_text("Triangle: Back",
+                          12, 516, ANCHOR_LEFT | ANCHOR_TOP, COL_MUTED);
+                break;
+            default:
+                break;
+        }
+    }
+    draw_text("v1.0", 948, 516, ANCHOR_RIGHT | ANCHOR_TOP, COL_DIM);
+}
+
+/* ── Input handlers ── */
+static launcher_result handle_sidebar_input(int key, const char **sel_path, jad_info *sel_info) {
+    (void)sel_path;
+    (void)sel_info;
     switch (key) {
         case KEY_UP:
-            main_sel = (main_sel - 1 + MENU_COUNT) % MENU_COUNT;
+            sidebar_sel = (sidebar_sel - 1 + SECTION_COUNT) % SECTION_COUNT;
             break;
         case KEY_DOWN:
-            main_sel = (main_sel + 1) % MENU_COUNT;
+            sidebar_sel = (sidebar_sel + 1) % SECTION_COUNT;
             break;
         case KEY_FIRE:
-            switch (main_sel) {
-                case MENU_RECENT:    current_section = SECTION_RECENT; recent_sel = 0; break;
-                case MENU_BROWSE:    current_section = SECTION_BROWSE; browse_sel = 0; scroll_offset = 0; break;
-                case MENU_FAVORITES: current_section = SECTION_FAV; fav_sel = 0; break;
-                case MENU_SETTINGS:  current_section = SECTION_SETTINGS; settings_sel = 0; break;
-                case MENU_REFRESH:   return LAUNCHER_RESULT_REFRESH;
-                case MENU_ABOUT:     current_section = SECTION_ABOUT; break;
-            }
+            current_section = (launcher_section)sidebar_sel;
+            sidebar_focus = 0;
+            if (current_section == SECTION_BROWSE)
+                browse_list_dir(browse_path);
+            if (current_section == SECTION_RECENT)
+                recent_sel = 0;
+            if (current_section == SECTION_SETTINGS)
+                settings_sel = 0;
+            break;
+        case KEY_RIGHT:
+            current_section = (launcher_section)sidebar_sel;
+            sidebar_focus = 0;
+            if (current_section == SECTION_BROWSE)
+                browse_list_dir(browse_path);
+            if (current_section == SECTION_RECENT)
+                recent_sel = 0;
+            if (current_section == SECTION_SETTINGS)
+                settings_sel = 0;
             break;
         case KEY_SOFT2:
             return LAUNCHER_RESULT_REFRESH;
         case KEY_SOFT3:
             return LAUNCHER_RESULT_QUIT;
-    }
-    return LAUNCHER_RESULT_NONE;
-}
-
-static launcher_result handle_browse_input(int key, const char **sel_path, jad_info *sel_info) {
-    switch (key) {
-        case KEY_UP:
-            if (browse_sel > 0) browse_sel--;
-            if (browse_sel < scroll_offset) scroll_offset--;
-            break;
-        case KEY_DOWN:
-            if (browse_sel < app_count - 1) browse_sel++;
-            if (browse_sel >= scroll_offset + 12) scroll_offset++;
-            break;
-        case KEY_FIRE:
-            if (browse_sel >= 0 && browse_sel < app_count) {
-                *sel_path = apps[browse_sel].jar_path;
-                if (apps[browse_sel].has_jad)
-                    jad_load(apps[browse_sel].jad_path, sel_info);
-                else
-                    memset(sel_info, 0, sizeof(jad_info));
-                launcher_add_recent(*sel_path, apps[browse_sel].name);
-                return LAUNCHER_RESULT_LAUNCH;
-            }
-            break;
-        case KEY_SOFT1: /* Square = toggle favorite */
-            if (browse_sel >= 0 && browse_sel < app_count) {
-                launcher_toggle_favorite(apps[browse_sel].jar_path);
-            }
-            break;
-        case KEY_SOFT2: /* Circle = refresh */
-            return LAUNCHER_RESULT_REFRESH;
-        case KEY_SOFT3: /* Triangle = back */
-            current_section = SECTION_MAIN;
-            break;
     }
     return LAUNCHER_RESULT_NONE;
 }
@@ -714,7 +604,6 @@ static launcher_result handle_recent_input(int key, const char **sel_path, jad_i
                 memset(sel_info, 0, sizeof(jad_info));
                 strncpy(sel_info->midlet_name, recents[recent_sel].name,
                         sizeof(sel_info->midlet_name) - 1);
-                /* Try to load .jad for the recent app */
                 char jad_path[512];
                 snprintf(jad_path, sizeof(jad_path), "%s", *sel_path);
                 char *dot = strrchr(jad_path, '.');
@@ -725,9 +614,8 @@ static launcher_result handle_recent_input(int key, const char **sel_path, jad_i
                 return LAUNCHER_RESULT_LAUNCH;
             }
             break;
-        case KEY_SOFT1: /* Square = remove from recent */
-            if (recent_sel >= 0 && recent_sel < n) {
-                /* Rewrite without this entry */
+        case KEY_SOFT1:
+            if (n > 0 && recent_sel >= 0 && recent_sel < n) {
                 char tmp[4096] = {0};
                 for (int i = 0; i < n; i++) {
                     if (i == recent_sel) continue;
@@ -740,48 +628,59 @@ static launcher_result handle_recent_input(int key, const char **sel_path, jad_i
                 if (recent_sel < 0) recent_sel = 0;
             }
             break;
+        case KEY_LEFT:
         case KEY_SOFT3:
-            current_section = SECTION_MAIN;
+            sidebar_focus = 1;
             break;
     }
     return LAUNCHER_RESULT_NONE;
 }
 
-static launcher_result handle_fav_input(int key, const char **sel_path, jad_info *sel_info) {
-    launcher_app *favs = NULL;
-    int fav_count = 0;
-    launcher_get_favorites(&favs, &fav_count);
-
+static launcher_result handle_browse_input(int key, const char **sel_path, jad_info *sel_info) {
     switch (key) {
         case KEY_UP:
-            if (fav_sel > 0) fav_sel--;
+            if (browse_sel > 0) browse_sel--;
+            if (browse_sel < browse_scroll) browse_scroll--;
             break;
         case KEY_DOWN:
-            if (fav_sel < fav_count - 1) fav_sel++;
+            if (browse_sel < browse_item_count - 1) browse_sel++;
+            if (browse_sel >= browse_scroll + 11) browse_scroll++;
             break;
         case KEY_FIRE:
-            if (fav_sel >= 0 && fav_sel < fav_count) {
-                *sel_path = favs[fav_sel].jar_path;
-                if (favs[fav_sel].has_jad)
-                    jad_load(favs[fav_sel].jad_path, sel_info);
-                else
+            if (browse_sel >= 0 && browse_sel < browse_item_count) {
+                if (browse_items[browse_sel].is_dir) {
+                    browse_enter_dir(browse_items[browse_sel].full_path);
+                } else if (browse_items[browse_sel].is_jar) {
+                    *sel_path = browse_items[browse_sel].full_path;
                     memset(sel_info, 0, sizeof(jad_info));
-                free(favs);
-                return LAUNCHER_RESULT_LAUNCH;
+                    char jad_path[512];
+                    snprintf(jad_path, sizeof(jad_path), "%s", *sel_path);
+                    char *dot = strrchr(jad_path, '.');
+                    if (dot && strcasecmp(dot, ".jar") == 0) {
+                        strcpy(dot, ".jad");
+                        if (fileio_exists(jad_path))
+                            jad_load(jad_path, sel_info);
+                    }
+                    if (!sel_info->midlet_name[0]) {
+                        strncpy(sel_info->midlet_name,
+                                browse_items[browse_sel].name,
+                                sizeof(sel_info->midlet_name) - 1);
+                        char *d = strrchr(sel_info->midlet_name, '.');
+                        if (d && strcasecmp(d, ".jar") == 0) *d = 0;
+                    }
+                    launcher_add_recent(*sel_path, sel_info->midlet_name);
+                    return LAUNCHER_RESULT_LAUNCH;
+                }
             }
             break;
-        case KEY_SOFT1:
-            if (fav_sel >= 0 && fav_sel < fav_count) {
-                launcher_toggle_favorite(favs[fav_sel].jar_path);
-                if (fav_sel >= fav_count - 1) fav_sel--;
-                if (fav_sel < 0) fav_sel = 0;
-            }
-            break;
+        case KEY_LEFT:
         case KEY_SOFT3:
-            current_section = SECTION_MAIN;
+            if (strcmp(browse_path, "ux0:") != 0)
+                browse_go_up();
+            else
+                sidebar_focus = 1;
             break;
     }
-    free(favs);
     return LAUNCHER_RESULT_NONE;
 }
 
@@ -791,26 +690,22 @@ static launcher_result handle_settings_input(int key) {
             if (settings_sel > 0) settings_sel--;
             break;
         case KEY_DOWN:
-            if (settings_sel < 1) settings_sel++;
+            if (settings_sel < 0) settings_sel++;
             break;
         case KEY_FIRE:
-            if (settings_sel == 0) {
-                /* Toggle volume (simple) */
-                int vol = audio_get_volume();
-                vol = (vol >= 100) ? 0 : (vol + 10);
-                audio_set_volume(vol);
-            }
+            res_current = (res_current + 1) % res_count;
             break;
+        case KEY_LEFT:
         case KEY_SOFT3:
-            current_section = SECTION_MAIN;
+            sidebar_focus = 1;
             break;
     }
     return LAUNCHER_RESULT_NONE;
 }
 
 static launcher_result handle_about_input(int key) {
-    if (key == KEY_SOFT3)
-        current_section = SECTION_MAIN;
+    if (key == KEY_LEFT || key == KEY_SOFT3)
+        sidebar_focus = 1;
     return LAUNCHER_RESULT_NONE;
 }
 
@@ -822,9 +717,9 @@ launcher_result launcher_run(const char **selected_path, jad_info *selected_info
         lcdui_begin_frame();
         lcdui_clear(COL_BG);
         draw_text("No Java ME apps found in ux0:data/java/", 480, 260,
-                  ANCHOR_HCENTER | ANCHOR_TOP, COL_DIM, 16);
+                  ANCHOR_HCENTER | ANCHOR_TOP, COL_DIM);
         draw_text("Place .jar files and relaunch", 480, 290,
-                  ANCHOR_HCENTER | ANCHOR_TOP, COL_MUTED, 12);
+                  ANCHOR_HCENTER | ANCHOR_TOP, COL_MUTED);
         lcdui_end_frame();
         sceKernelDelayThread(2 * 1000 * 1000);
         return LAUNCHER_RESULT_REFRESH;
@@ -836,30 +731,29 @@ launcher_result launcher_run(const char **selected_path, jad_info *selected_info
         input_event events[16];
         int ev_count = input_poll(events, 16);
 
-        /* Check backlog: if app launched and we return, stay on browse */
         for (int i = 0; i < ev_count; i++) {
             if (events[i].type == INPUT_EVENT_KEY_PRESSED) {
                 launcher_result r = LAUNCHER_RESULT_NONE;
 
-                switch (current_section) {
-                    case SECTION_MAIN:
-                        r = handle_main_input(events[i].key_code);
-                        break;
-                    case SECTION_BROWSE:
-                        r = handle_browse_input(events[i].key_code, selected_path, selected_info);
-                        break;
-                    case SECTION_RECENT:
-                        r = handle_recent_input(events[i].key_code, selected_path, selected_info);
-                        break;
-                    case SECTION_FAV:
-                        r = handle_fav_input(events[i].key_code, selected_path, selected_info);
-                        break;
-                    case SECTION_SETTINGS:
-                        r = handle_settings_input(events[i].key_code);
-                        break;
-                    case SECTION_ABOUT:
-                        r = handle_about_input(events[i].key_code);
-                        break;
+                if (sidebar_focus) {
+                    r = handle_sidebar_input(events[i].key_code, selected_path, selected_info);
+                } else {
+                    switch (current_section) {
+                        case SECTION_RECENT:
+                            r = handle_recent_input(events[i].key_code, selected_path, selected_info);
+                            break;
+                        case SECTION_BROWSE:
+                            r = handle_browse_input(events[i].key_code, selected_path, selected_info);
+                            break;
+                        case SECTION_SETTINGS:
+                            r = handle_settings_input(events[i].key_code);
+                            break;
+                        case SECTION_ABOUT:
+                            r = handle_about_input(events[i].key_code);
+                            break;
+                        default:
+                            break;
+                    }
                 }
 
                 if (r != LAUNCHER_RESULT_NONE)
@@ -867,19 +761,20 @@ launcher_result launcher_run(const char **selected_path, jad_info *selected_info
             }
         }
 
-        /* Render */
         lcdui_begin_frame();
         lcdui_clear(COL_BG);
 
+        render_sidebar();
+
         switch (current_section) {
-            case SECTION_MAIN:     render_main(); break;
-            case SECTION_BROWSE:   render_browse(); break;
             case SECTION_RECENT:   render_recent(); break;
-            case SECTION_FAV:      render_favorites(); break;
+            case SECTION_BROWSE:   render_browse(); break;
             case SECTION_SETTINGS: render_settings(); break;
             case SECTION_ABOUT:    render_about(); break;
+            default: break;
         }
 
+        render_footer();
         lcdui_end_frame();
         sceKernelDelayThread(16 * 1000);
     }
