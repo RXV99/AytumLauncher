@@ -50,10 +50,10 @@ print("=== Creating VPK ===")
 os.chdir("..")
 with zipfile.ZipFile("vita-java-me.vpk", "w", zipfile.ZIP_DEFLATED) as zf:
     zf.write("build/eboot.bin", "eboot.bin")
-    for root, dirs, files in os.walk("sce_sys"):
+    for root, dirs, files in os.walk("build/sce_sys"):
         for fn in files:
             path = os.path.join(root, fn)
-            arcname = os.path.relpath(path, ".")
+            arcname = os.path.relpath(path, "build/")
             zf.write(path, arcname)
 
 print("=== VPK created ===")
