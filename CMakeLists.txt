@@ -27,8 +27,7 @@ target_link_libraries(vita-java-me PRIVATE
     SceAudio_stub SceLibKernel_stub
     SceCtrl_stub SceTouch_stub
     SceDisplay_stub SceGxm_stub
-    SceSharedFb_stub SceAppMgr_stub
-    SceCommonDialog_stub ScePvf_stub
+    SceAppMgr_stub SceCommonDialog_stub ScePvf_stub
     vita2d m
 )
 
