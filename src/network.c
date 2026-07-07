@@ -52,8 +52,7 @@ static int resolve_host(const char *host, SceNetSockaddrIn *addr) {
     addr->sin_family = SCE_NET_AF_INET;
 
     /* Try as IP first */
-    addr->sin_addr.s_addr = sceNetInetAddr(host);
-    if (addr->sin_addr.s_addr != SCE_NET_INADDR_NONE)
+    if (sceNetInetPton(SCE_NET_AF_INET, host, &addr->sin_addr) == 1)
         return 0;
 
     /* DNS resolve - simplified, fallback to IP only */
@@ -116,8 +115,7 @@ int network_socket_connect(const char *host, int port) {
     addr.sin_port = sceNetHtons((unsigned short)port);
 
     /* Resolve hostname */
-    addr.sin_addr.s_addr = sceNetInetAddr(host);
-    if (addr.sin_addr.s_addr == SCE_NET_INADDR_NONE) {
+    if (sceNetInetPton(SCE_NET_AF_INET, host, &addr.sin_addr) != 1) {
         /* DNS would go here */
         sceNetSocketClose(fd);
         return -1;
