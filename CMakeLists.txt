@@ -23,9 +23,8 @@ set(SOURCES
 add_executable(vita-java-me ${SOURCES})
 
 target_link_libraries(vita-java-me PRIVATE
-    SceNet SceNetCtl SceAppMgr SceCommonDialog
-    SceLibKernel SceLibc SceSysmodule ScePgf
-    SceAudio
+    SceNet_stub SceNetCtl_stub
+    SceAudio_stub SceLibKernel_stub
     vita2d m
 )
 
