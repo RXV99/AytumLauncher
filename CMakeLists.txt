@@ -1,5 +1,16 @@
 cmake_minimum_required(VERSION 3.10)
+
+if(NOT VITASDK)
+    set(VITASDK $ENV{VITASDK})
+endif()
+if(NOT VITASDK)
+    set(VITASDK /usr/local/vitasdk)
+endif()
+list(APPEND CMAKE_MODULE_PATH ${VITASDK}/share)
+
 project(vita-java-me C CXX)
+
+include(Vita)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 11)
