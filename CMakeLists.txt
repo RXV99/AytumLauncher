@@ -1,68 +1,42 @@
-cmake_minimum_required(VERSION 3.10)
-project(vita-java-me C CXX)
+name: Build VPK
 
-set(CMAKE_SYSTEM_NAME Generic)
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_STANDARD 11)
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
 
-if(NOT DEFINED ENV{VITASDK} AND NOT DEFINED VITASDK)
-    message(FATAL_ERROR "VITASDK not set. Set env var or pass -DVITASDK=")
-endif()
-if(NOT DEFINED VITASDK)
-    set(VITASDK $ENV{VITASDK})
-endif()
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: vitasdk/vitasdk:latest
 
-set(CMAKE_TOOLCHAIN_FILE "${VITASDK}/share/vita.toolchain.cmake"
-    CACHE PATH "Vita SDK toolchain")
-set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)
-set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
+    steps:
+      - uses: actions/checkout@v4
 
-add_definitions(-DPSP2 -D__PSP2__ -DVITA -D_JNI_IMPLEMENTATION_)
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release 2>&1
 
-set(SOURCES
-    src/main.c
-    src/launcher.c
-    src/jad_parser.c
-    src/jvm_core.c
-    src/midp_api.c
-    src/graphics.c
-    src/input.c
-    src/fileio.c
-    src/network.c
-    src/audio.c
-    src/decoder.c
-)
+      - name: Build ELF
+        run: cmake --build build -j$(nproc) VERBOSE=1 2>&1
 
-add_executable(vita-java-me ${SOURCES})
+      - name: Create VPK
+        run: |
+          set -e
+          cd build
+          vita-elf-create vita-java-me.elf vita-java-me.velf 2>&1
+          vita-make-fself vita-java-me.velf eboot.bin 2>&1
+          cp -r ../sce_sys .
+          vita-pack-vpk -s sce_sys/param.sfo -b eboot.bin ../vita-java-me.vpk 2>&1
 
-target_link_libraries(vita-java-me PRIVATE
-    SceNet SceNetCtl SceAppMgr SceCommonDialog
-    SceLibKernel SceLibc SceSysmodule ScePgf
-    SceAudio
-    vita2d m
-)
+      - name: Upload VPK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vita-java-me.vpk
+          path: vita-java-me.vpk
 
-target_compile_options(vita-java-me PRIVATE
-    -Wall -Wextra -Wno-unused-parameter -O2
-    -mfloat-abi=hard -mfpu=neon-vfpv4
-)
-
-set_target_properties(vita-java-me PROPERTIES
-    OUTPUT_NAME "vita-java-me"
-    SUFFIX ".elf"
-)
-
-# Package: copy sce_sys next to ELF, then create VPK
-add_custom_command(TARGET vita-java-me POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/sce_sys
-        $<TARGET_FILE_DIR:vita-java-me>/sce_sys
-    COMMENT "Copying sce_sys"
-)
-
-include("${VITASDK}/share/vita.cmake" OPTIONAL)
-
-vita_create_vpk(vita-java-me.vpk "JAVAME00001" "Java ME Emulator" "01.00"
-    FILE vita-java-me.elf
-    DATA_DIR sce_sys
-)
+      - name: Upload debug ELF
+        uses: actions/upload-artifact@v4
+        with:
+          name: vita-java-me.elf
+          path: build/vita-java-me.elf
