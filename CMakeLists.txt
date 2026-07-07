@@ -15,6 +15,7 @@ include("${VITASDK}/share/vita.cmake" REQUIRED)
 set(VITA_APP_NAME "Java ME Emulator")
 set(VITA_TITLEID  "JAVAME00001")
 set(VITA_VERSION  "01.00")
+set(VITA_CATEGORY "gp")
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 11)
