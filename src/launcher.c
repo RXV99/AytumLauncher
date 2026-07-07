@@ -2,10 +2,12 @@
 #include "fileio.h"
 #include "graphics.h"
 #include "input.h"
+#include "audio.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <strings.h>
 #include <psp2/kernel/threadmgr.h>
 #include <time.h>
 
@@ -59,15 +61,6 @@ static const char *main_icons[MENU_COUNT] = {
 #define FAV_FILE    "ux0:data/java/.favorites"
 
 /* ── Internal helpers ── */
-static int strcasecmp(const char *a, const char *b) {
-    while (*a && *b) {
-        int ca = toupper((unsigned char)*a);
-        int cb = toupper((unsigned char)*b);
-        if (ca != cb) return ca - cb;
-        a++; b++;
-    }
-    return (unsigned char)*a - (unsigned char)*b;
-}
 
 /* ── Launcher init / scan ── */
 int launcher_init(void) {

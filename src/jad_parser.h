@@ -1,6 +1,8 @@
 #ifndef JAD_PARSER_H
 #define JAD_PARSER_H
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

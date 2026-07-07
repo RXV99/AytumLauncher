@@ -64,7 +64,8 @@ jvm_class *jvm_load_class(jvm_instance *jvm, const uint8_t *data, size_t size) {
                 cp->data.integer = (s4)read_u4(&p);
                 break;
             case CONSTANT_Float:
-                cp->data.float_val = *(float*)&(uint32_t){read_u4(&p)};
+                { uint32_t tmp_f = read_u4(&p);
+                  memcpy(&cp->data.float_val, &tmp_f, sizeof(float)); }
                 break;
             case CONSTANT_Long:
                 cp->data.long_val = ((s8)read_u4(&p) << 32) | read_u4(&p);
@@ -73,7 +74,7 @@ jvm_class *jvm_load_class(jvm_instance *jvm, const uint8_t *data, size_t size) {
             case CONSTANT_Double:
                 { uint32_t hi = read_u4(&p), lo = read_u4(&p);
                   uint64_t tmp = ((uint64_t)hi << 32) | lo;
-                  cp->data.double_val = *(double*)&tmp; i++; break; }
+                  memcpy(&cp->data.double_val, &tmp, sizeof(double)); i++; break; }
             case CONSTANT_Class:
                 cp->data.class_ref.class_index = read_u2(&p);
                 break;
@@ -255,32 +256,36 @@ jvm_array *jvm_alloc_array(jvm_instance *jvm, jvm_class *class_info, int32_t len
  * ============================================================ */
 
 jvm_value jvm_stack_pop(jvm_thread *thread) {
-    if (thread->stack_top < 0) {
+    jvm_frame *f = thread->frames;
+    if (f->stack_top < 0) {
         printf("jvm: stack underflow!\n");
         jvm_value v; memset(&v, 0, sizeof(v)); return v;
     }
-    return thread->stack[thread->stack_top--];
+    return f->stack[f->stack_top--];
 }
 
 void jvm_stack_push(jvm_thread *thread, jvm_value val) {
-    if (thread->stack_top >= (s4)thread->max_stack - 1) {
+    jvm_frame *f = thread->frames;
+    if (f->stack_top >= (s4)f->max_stack - 1) {
         printf("jvm: stack overflow!\n");
         return;
     }
-    thread->stack[++thread->stack_top] = val;
+    f->stack[++f->stack_top] = val;
 }
 
 jvm_value jvm_local_get(jvm_thread *thread, u2 index) {
-    if (index >= thread->max_locals) {
-        printf("jvm: local index out of bounds %d >= %d\n", index, thread->max_locals);
+    jvm_frame *f = thread->frames;
+    if (index >= f->max_locals) {
+        printf("jvm: local index out of bounds %d >= %d\n", index, f->max_locals);
         jvm_value v; memset(&v, 0, sizeof(v)); return v;
     }
-    return thread->locals[index];
+    return f->locals[index];
 }
 
 void jvm_local_set(jvm_thread *thread, u2 index, jvm_value val) {
-    if (index >= thread->max_locals) return;
-    thread->locals[index] = val;
+    jvm_frame *f = thread->frames;
+    if (index >= f->max_locals) return;
+    f->locals[index] = val;
 }
 
 /* ============================================================
@@ -573,20 +578,20 @@ jvm_value jvm_execute_method(jvm_instance *jvm, jvm_class *class_info,
                 jvm_stack_push(thread, make_int(v1 > v2 ? 1 : (v1 == v2 ? 0 : -1))); break; } /* dcmpg */
 
             /* Branches */
-            case 0x99: { if (jvm_stack_pop(thread).i == 0) pc += (s2)READ_U2(); else pc += 2; break; } /* ifeq */
-            case 0x9a: { if (jvm_stack_pop(thread).i != 0) pc += (s2)READ_U2(); else pc += 2; break; } /* ifne */
-            case 0x9b: { if (jvm_stack_pop(thread).i < 0) pc += (s2)READ_U2(); else pc += 2; break; } /* iflt */
-            case 0x9c: { if (jvm_stack_pop(thread).i >= 0) pc += (s2)READ_U2(); else pc += 2; break; } /* ifge */
-            case 0x9d: { if (jvm_stack_pop(thread).i > 0) pc += (s2)READ_U2(); else pc += 2; break; } /* ifgt */
-            case 0x9e: { if (jvm_stack_pop(thread).i <= 0) pc += (s2)READ_U2(); else pc += 2; break; } /* ifle */
-            case 0x9f: { s4 v2 = jvm_stack_pop(thread).i; s4 v1 = jvm_stack_pop(thread).i; if (v1 == v2) pc += (s2)READ_U2(); else pc += 2; break; } /* if_icmpeq */
-            case 0xa0: { s4 v2 = jvm_stack_pop(thread).i; s4 v1 = jvm_stack_pop(thread).i; if (v1 != v2) pc += (s2)READ_U2(); else pc += 2; break; }
-            case 0xa1: { s4 v2 = jvm_stack_pop(thread).i; s4 v1 = jvm_stack_pop(thread).i; if (v1 < v2) pc += (s2)READ_U2(); else pc += 2; break; }
-            case 0xa2: { s4 v2 = jvm_stack_pop(thread).i; s4 v1 = jvm_stack_pop(thread).i; if (v1 >= v2) pc += (s2)READ_U2(); else pc += 2; break; }
-            case 0xa3: { s4 v2 = jvm_stack_pop(thread).i; s4 v1 = jvm_stack_pop(thread).i; if (v1 > v2) pc += (s2)READ_U2(); else pc += 2; break; }
-            case 0xa4: { s4 v2 = jvm_stack_pop(thread).i; s4 v1 = jvm_stack_pop(thread).i; if (v1 <= v2) pc += (s2)READ_U2(); else pc += 2; break; }
-            case 0xa5: { void *v2 = jvm_stack_pop(thread).ref; void *v1 = jvm_stack_pop(thread).ref; if (v1 == v2) pc += (s2)READ_U2(); else pc += 2; break; } /* if_acmpeq */
-            case 0xa6: { void *v2 = jvm_stack_pop(thread).ref; void *v1 = jvm_stack_pop(thread).ref; if (v1 != v2) pc += (s2)READ_U2(); else pc += 2; break; } /* if_acmpne */
+            case 0x99: { s2 off99 = (s2)READ_U2(); if (jvm_stack_pop(thread).i == 0) pc += off99; else pc += 2; break; } /* ifeq */
+            case 0x9a: { s2 off9a = (s2)READ_U2(); if (jvm_stack_pop(thread).i != 0) pc += off9a; else pc += 2; break; } /* ifne */
+            case 0x9b: { s2 off9b = (s2)READ_U2(); if (jvm_stack_pop(thread).i < 0) pc += off9b; else pc += 2; break; } /* iflt */
+            case 0x9c: { s2 off9c = (s2)READ_U2(); if (jvm_stack_pop(thread).i >= 0) pc += off9c; else pc += 2; break; } /* ifge */
+            case 0x9d: { s2 off9d = (s2)READ_U2(); if (jvm_stack_pop(thread).i > 0) pc += off9d; else pc += 2; break; } /* ifgt */
+            case 0x9e: { s2 off9e = (s2)READ_U2(); if (jvm_stack_pop(thread).i <= 0) pc += off9e; else pc += 2; break; } /* ifle */
+            case 0x9f: { s4 v2 = jvm_stack_pop(thread).i; s4 v1 = jvm_stack_pop(thread).i; s2 off9f = (s2)READ_U2(); if (v1 == v2) pc += off9f; else pc += 2; break; } /* if_icmpeq */
+            case 0xa0: { s4 v2 = jvm_stack_pop(thread).i; s4 v1 = jvm_stack_pop(thread).i; s2 offa0 = (s2)READ_U2(); if (v1 != v2) pc += offa0; else pc += 2; break; }
+            case 0xa1: { s4 v2 = jvm_stack_pop(thread).i; s4 v1 = jvm_stack_pop(thread).i; s2 offa1 = (s2)READ_U2(); if (v1 < v2) pc += offa1; else pc += 2; break; }
+            case 0xa2: { s4 v2 = jvm_stack_pop(thread).i; s4 v1 = jvm_stack_pop(thread).i; s2 offa2 = (s2)READ_U2(); if (v1 >= v2) pc += offa2; else pc += 2; break; }
+            case 0xa3: { s4 v2 = jvm_stack_pop(thread).i; s4 v1 = jvm_stack_pop(thread).i; s2 offa3 = (s2)READ_U2(); if (v1 > v2) pc += offa3; else pc += 2; break; }
+            case 0xa4: { s4 v2 = jvm_stack_pop(thread).i; s4 v1 = jvm_stack_pop(thread).i; s2 offa4 = (s2)READ_U2(); if (v1 <= v2) pc += offa4; else pc += 2; break; }
+            case 0xa5: { void *v2 = jvm_stack_pop(thread).ref; void *v1 = jvm_stack_pop(thread).ref; s2 offa5 = (s2)READ_U2(); if (v1 == v2) pc += offa5; else pc += 2; break; } /* if_acmpeq */
+            case 0xa6: { void *v2 = jvm_stack_pop(thread).ref; void *v1 = jvm_stack_pop(thread).ref; s2 offa6 = (s2)READ_U2(); if (v1 != v2) pc += offa6; else pc += 2; break; } /* if_acmpne */
 
             case 0xa7: { /* goto */
                 pc += (s2)READ_U2();
@@ -713,10 +718,6 @@ jvm_value jvm_execute_method(jvm_instance *jvm, jvm_class *class_info,
                             for (u2 m = 0; m < target->methods_count; m++) {
                                 char *tm = cp_utf8(target, target->methods[m].name_index);
                                 if (tm && strcmp(tm, mname) == 0) {
-                                    /* Execute found method */
-                                    jvm_value *call_args = NULL;
-                                    int call_argc = 0;
-                                    /* Simplified: just skip execution for now */
                                     break;
                                 }
                             }
@@ -737,8 +738,8 @@ jvm_value jvm_execute_method(jvm_instance *jvm, jvm_class *class_info,
             case 0xbb: { /* new */
                 u2 idx = READ_U2();
                 cp_info *cp = &class_info->cp[idx];
-                jvm_class *cls_ref = &class_info->cp[cp->data.class_ref.class_index];
-                char *cname = cp_utf8(class_info, cls_ref->data.class_ref.class_index);
+                cp_info *cls_cp = &class_info->cp[cp->data.class_ref.class_index];
+                char *cname = cp_utf8(class_info, cls_cp->data.class_ref.class_index);
                 jvm_class *target = jvm_find_class(jvm, cname);
                 if (target) {
                     jvm_object *obj = jvm_alloc_object(jvm, target);
@@ -775,11 +776,13 @@ jvm_value jvm_execute_method(jvm_instance *jvm, jvm_class *class_info,
                 break;
             }
             case 0xc6: { /* ifnull */
-                if (jvm_stack_pop(thread).ref == NULL) pc += (s2)READ_U2(); else pc += 2;
+                s2 off_c6 = (s2)READ_U2();
+                if (jvm_stack_pop(thread).ref == NULL) pc += off_c6; else pc += 2;
                 break;
             }
             case 0xc7: { /* ifnonnull */
-                if (jvm_stack_pop(thread).ref != NULL) pc += (s2)READ_U2(); else pc += 2;
+                s2 off_c7 = (s2)READ_U2();
+                if (jvm_stack_pop(thread).ref != NULL) pc += off_c7; else pc += 2;
                 break;
             }
 

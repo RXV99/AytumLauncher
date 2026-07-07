@@ -4,18 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
-
-#ifndef strcasecmp
-static int strcasecmp(const char *a, const char *b) {
-    while (*a && *b) {
-        int ca = toupper((unsigned char)*a);
-        int cb = toupper((unsigned char)*b);
-        if (ca != cb) return ca - cb;
-        a++; b++;
-    }
-    return (unsigned char)*a - (unsigned char)*b;
-}
-#endif
+#include <strings.h>
 
 #define MAX_JAD_ENTRIES 64
 

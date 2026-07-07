@@ -1,23 +1,12 @@
 #include "fileio.h"
 #include <string.h>
+#include <strings.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <psp2/io/dirent.h>
 #include <psp2/io/stat.h>
 #include <psp2/io/fcntl.h>
-
-#ifndef strcasecmp
-static int strcasecmp(const char *a, const char *b) {
-    while (*a && *b) {
-        int ca = toupper((unsigned char)*a);
-        int cb = toupper((unsigned char)*b);
-        if (ca != cb) return ca - cb;
-        a++; b++;
-    }
-    return (unsigned char)*a - (unsigned char)*b;
-}
-#endif
 
 #define BASE_PATH "ux0:data/java"
 
