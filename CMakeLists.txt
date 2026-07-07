@@ -1,15 +1,20 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.16)
+
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+  if(DEFINED ENV{VITASDK})
+    set(CMAKE_TOOLCHAIN_FILE "$ENV{VITASDK}/share/vita.toolchain.cmake" CACHE PATH "toolchain file")
+  else()
+    message(FATAL_ERROR "Please define VITASDK to point to your SDK path!")
+  endif()
+endif()
 
 project(vita-java-me C CXX)
 
-if(CMAKE_TOOLCHAIN_FILE)
-    get_filename_component(VITA_CMAKE_DIR ${CMAKE_TOOLCHAIN_FILE} DIRECTORY)
-    if(EXISTS ${VITA_CMAKE_DIR}/Vita.cmake)
-        include(${VITA_CMAKE_DIR}/Vita.cmake)
-    elseif(EXISTS ${VITA_CMAKE_DIR}/vita.cmake)
-        include(${VITA_CMAKE_DIR}/vita.cmake)
-    endif()
-endif()
+include("${VITASDK}/share/vita.cmake" REQUIRED)
+
+set(VITA_APP_NAME "Java ME Emulator")
+set(VITA_TITLEID  "JAVAME00001")
+set(VITA_VERSION  "01.00")
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 11)
@@ -31,9 +36,9 @@ set(SOURCES
     src/pvf_stubs.c
 )
 
-add_executable(vita-java-me ${SOURCES})
+add_executable(${PROJECT_NAME} ${SOURCES})
 
-target_link_libraries(vita-java-me PRIVATE
+target_link_libraries(${PROJECT_NAME} PRIVATE
     vita2d
     SceNet_stub SceNetCtl_stub
     SceAudio_stub SceLibKernel_stub
@@ -43,13 +48,21 @@ target_link_libraries(vita-java-me PRIVATE
     m
 )
 
-target_compile_options(vita-java-me PRIVATE
+target_compile_options(${PROJECT_NAME} PRIVATE
     -Wall -Wextra -Wno-unused-parameter -O2
 )
 
-set_target_properties(vita-java-me PROPERTIES
+set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME "vita-java-me"
     SUFFIX ".elf"
 )
 
-vita_create_vpk(vita-java-me.vpk JAVAME00001 "Java ME Emulator" sce_sys/param.sfo)
+vita_create_self(${PROJECT_NAME}.self ${PROJECT_NAME})
+vita_create_vpk(vita-java-me.vpk ${VITA_TITLEID} ${PROJECT_NAME}.self
+  VERSION ${VITA_VERSION}
+  NAME ${VITA_APP_NAME}
+  FILE sce_sys/icon0.png sce_sys/icon0.png
+  FILE sce_sys/livearea/contents/bg.png sce_sys/livearea/contents/bg.png
+  FILE sce_sys/livearea/contents/startup.png sce_sys/livearea/contents/startup.png
+  FILE sce_sys/livearea/contents/template.xml sce_sys/livearea/contents/template.xml
+)
