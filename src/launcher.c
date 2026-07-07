@@ -275,13 +275,49 @@ const launcher_app *launcher_get_app(int index) {
 /* ── Recent tracking ── */
 #define RECENT_FILE "ux0:data/java/.recent"
 
+static recent_entry recent_cache[MAX_RECENT];
+static int recent_cache_count = -1;
+
+static void recent_cache_invalidate(void) {
+    recent_cache_count = -1;
+}
+
+static int recent_cache_fill(void) {
+    if (recent_cache_count >= 0) return recent_cache_count;
+
+    size_t size;
+    uint8_t *data = fileio_read_file(RECENT_FILE, &size);
+    if (!data) { recent_cache_count = 0; return 0; }
+
+    int count = 0;
+    char *p = (char*)data;
+    char *end = p + size;
+    while (p < end && count < MAX_RECENT) {
+        char *nl = strchr(p, '\n');
+        if (!nl) break;
+        *nl = 0;
+        char *sep = strchr(p, '|');
+        if (sep) {
+            *sep = 0;
+            strncpy(recent_cache[count].path, p, sizeof(recent_cache[count].path) - 1);
+            strncpy(recent_cache[count].name, sep + 1, sizeof(recent_cache[count].name) - 1);
+            count++;
+        }
+        p = nl + 1;
+    }
+
+    free(data);
+    recent_cache_count = count;
+    return count;
+}
+
 void launcher_add_recent(const char *jar_path, const char *name) {
-    recent_entry recents[MAX_RECENT];
-    int n = launcher_get_recent(recents, MAX_RECENT);
+    recent_cache_invalidate();
+    int n = recent_cache_fill();
 
     int found = -1;
     for (int i = 0; i < n; i++) {
-        if (strcmp(recents[i].path, jar_path) == 0) { found = i; break; }
+        if (strcmp(recent_cache[i].path, jar_path) == 0) { found = i; break; }
     }
 
     char tmp[4096] = {0};
@@ -291,37 +327,20 @@ void launcher_add_recent(const char *jar_path, const char *name) {
 
     for (int i = 0; i < n && i < MAX_RECENT; i++) {
         if (i == found) continue;
-        snprintf(line, sizeof(line), "%s|%s\n", recents[i].path, recents[i].name);
+        snprintf(line, sizeof(line), "%s|%s\n", recent_cache[i].path, recent_cache[i].name);
         strcat(tmp, line);
     }
 
     fileio_write_file(RECENT_FILE, (uint8_t*)tmp, strlen(tmp));
+    recent_cache_invalidate();
 }
 
 int launcher_get_recent(recent_entry *entries, int max) {
-    size_t size;
-    uint8_t *data = fileio_read_file(RECENT_FILE, &size);
-    if (!data) return 0;
-
-    int count = 0;
-    char *p = (char*)data;
-    char *end = p + size;
-    while (p < end && count < max) {
-        char *nl = strchr(p, '\n');
-        if (!nl) break;
-        *nl = 0;
-        char *sep = strchr(p, '|');
-        if (sep) {
-            *sep = 0;
-            strncpy(entries[count].path, p, sizeof(entries[count].path) - 1);
-            strncpy(entries[count].name, sep + 1, sizeof(entries[count].name) - 1);
-            count++;
-        }
-        p = nl + 1;
-    }
-
-    free(data);
-    return count;
+    int n = recent_cache_fill();
+    int copy = n < max ? n : max;
+    for (int i = 0; i < copy; i++)
+        entries[i] = recent_cache[i];
+    return copy;
 }
 
 /* ── Browse state persistence ── */
